@@ -15,3 +15,8 @@ collector/*.log
 .DS_Store
 .idea/
 .vscode/
+
+# docs
+.docs/
+docs/
+
