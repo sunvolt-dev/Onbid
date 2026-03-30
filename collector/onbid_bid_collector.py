@@ -163,14 +163,20 @@ def fetch_bid(cltr_mng_no: str, pbct_cdtn_no) -> dict | None:
         return None
 
     try:
-        # 실제 응답 구조: { "result": { "resultCode": "00", "resultMsg": "..." }, ... }
-        result_code = data.get("result", {}).get("resultCode", "??")
+        # 응답 구조가 두 가지:
+        #   구형: { "result": { "resultCode": "00" }, ... }
+        #   신형: { "header": { "resultCode": "00" }, "body": { "items": ... } }
+        result_code = (
+            data.get("result", {}).get("resultCode")
+            or data.get("header", {}).get("resultCode")
+            or "??"
+        )
 
         if result_code == "03":
             # NODATA_ERROR — 입찰 진행 중이 아닌 물건 (종료/낙찰). 조용히 스킵
             return None
         if result_code != "00":
-            log.warning(f"  [{cltr_mng_no}] 응답코드 {result_code}: {data.get('result', {}).get('resultMsg')}")
+            log.warning(f"  [{cltr_mng_no}] 응답코드 {result_code}")
             return None
 
         return data
@@ -209,10 +215,36 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
     """
     _clear_sub_tables(conn, cltr_mng_no)
 
-    proc_anct_nm = to_str(data.get("procAnctNm"))   # 공고명 (최상위)
-    pbct_cdtn_no = to_int(data.get("pbctCdtnNo"))
+    # 응답 구조 분기: 구형(prvdBidDtls) vs 신형(body.items.item)
+    raw = data
+    if "body" in data:
+        items_raw = (data.get("body") or {}).get("items", {}).get("item")
+        if items_raw:
+            raw = to_list(items_raw)[0] if isinstance(items_raw, list) else items_raw
 
-    for dtl in to_list(data.get("prvdBidDtls")):
+    dtls = raw.get("prvdBidDtls")
+    proc_anct_nm = to_str(raw.get("procAnctNm") or raw.get("onbidPbancNm"))
+    pbct_cdtn_no = to_int(raw.get("pbctCdtnNo"))
+
+    # 신형 구조: cseqBidInfClgList(회차별 입찰정보)를 prvdBidDtls 형식으로 변환
+    if not dtls and raw.get("cseqBidInfClgList"):
+        dtls = []
+        for seq in to_list(raw.get("cseqBidInfClgList")):
+            dtls.append({
+                "bidSeq":              seq.get("pbctNsq"),
+                "bidStrtDttm":         seq.get("cltrBidBgngDt"),
+                "bidEndDttm":          seq.get("cltrBidEndDt"),
+                "bidOpnnDttm":         seq.get("cltrOpbdDt"),
+                "bidMthdNm":           seq.get("bidDivNm"),
+                "minBdPrc":            seq.get("lowstBidPrcIndctCont"),
+                "acmlFailCnt":         raw.get("usbdNft"),
+            })
+        # prcnBidClgList를 BID_HIST로 매핑
+        prcn_list = to_list(raw.get("prcnBidClgList"))
+
+    dtls = to_list(dtls)
+
+    for dtl in dtls:
         # BID_QUAL INSERT
         cursor = conn.execute("""
             INSERT INTO BID_QUAL (
@@ -257,7 +289,12 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
         bid_qual_id = cursor.lastrowid  # 방금 INSERT된 BID_QUAL.id
 
         # BID_HIST INSERT (이전 입찰 내역)
-        for hist in to_list(dtl.get("prvdBidHists")):
+        # 구형: prvdBidHists / 신형: prcnBidClgList (최초 1회만)
+        hist_items = to_list(dtl.get("prvdBidHists"))
+        if not hist_items and "prcn_list" in dir():
+            pass  # prcn_list는 아래에서 별도 처리
+
+        for hist in hist_items:
             conn.execute("""
                 INSERT INTO BID_HIST
                     (bid_qual_id, cltr_mng_no, prv_bid_seq, prv_bid_rslt, prv_bid_fail_cnt)
@@ -269,6 +306,27 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
                 to_str(hist.get("prvBidRslt")),
                 to_int(hist.get("prvBidFailCnt")),
             ))
+
+    # 신형 prcnBidClgList → BID_HIST (첫 번째 BID_QUAL에 연결)
+    if not raw.get("prvdBidDtls") and raw.get("prcnBidClgList"):
+        first_qual = conn.execute(
+            "SELECT id FROM BID_QUAL WHERE cltr_mng_no = ? ORDER BY bid_seq ASC LIMIT 1",
+            (cltr_mng_no,),
+        ).fetchone()
+        if first_qual:
+            fq_id = first_qual[0]
+            for prcn in to_list(raw.get("prcnBidClgList")):
+                conn.execute("""
+                    INSERT INTO BID_HIST
+                        (bid_qual_id, cltr_mng_no, prv_bid_seq, prv_bid_rslt, prv_bid_fail_cnt)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    fq_id,
+                    cltr_mng_no,
+                    to_int(prcn.get("pbctNsq")),
+                    to_str(prcn.get("pbctStatNm")),
+                    None,
+                ))
 
     # 입찰정보 조회 완료 시각 기록
     conn.execute(
