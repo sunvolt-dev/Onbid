@@ -16,10 +16,14 @@
 
 ```
 onbid-dashboard/
+├── .env                          # API 키 (git 제외)
+├── .gitignore
+├── requirements.txt              # flask, flask-cors, requests, python-dotenv
 ├── collector/
 │   ├── onbid_list_collector.py   # 01 API — 목록 수집, BID_ITEMS 저장
 │   ├── onbid_detail_collector.py # 04 API — 물건 상세, 9개 서브 테이블 저장
 │   ├── onbid_bid_collector.py    # 07 API — 입찰정보, BID_QUAL/BID_HIST 저장
+│   ├── run_pipeline.py           # 파이프라인 오케스트레이터 (3단계 순차 실행)
 │   └── onbid_api_list.py         # 테스트/샘플 출력용
 ├── server/
 │   └── app.py                    # Flask API 서버 (미구현)
@@ -31,10 +35,18 @@ onbid-dashboard/
 │       ├── ItemTable.tsx
 │       ├── FilterBar.tsx
 │       └── ItemDetail.tsx
-└── docs/
-    ├── 01_온비드_부동산_물건목록_조회서비스.md   # 목록 API 공식 문서
-    ├── 04_온비드_부동산_물건상세_조회서비스.md   # 상세 API 공식 문서
-    └── 07_온비드_물건상세_입찰정보_조회서비스.md # 입찰 API 공식 문서
+├── docs/
+│   ├── adr/
+│   │   └── 001-flask-api-설계.md  # ADR: Flask + raw SQLite 선택 근거
+│   ├── 01_온비드_부동산_물건목록_조회서비스.md   # 목록 API 공식 문서
+│   ├── 04_온비드_부동산_물건상세_조회서비스.md   # 상세 API 공식 문서
+│   └── 07_온비드_물건상세_입찰정보_조회서비스.md # 입찰 API 공식 문서
+└── .claude/
+    ├── agents/
+    │   ├── project-explainer.md  # 프로젝트 전체 설명 서브에이전트
+    │   └── refactor-analyst.md   # 리팩토링 분석 서브에이전트
+    └── commands/
+        └── adr-writer.md         # /adr-writer 슬래시 커맨드
 ```
 
 ## 수집 파이프라인 (3단계)
@@ -163,3 +175,32 @@ onbid-dashboard/
 ## 물건 상태 관리
 
 낙찰/취소된 물건은 온비드 API 응답에서 사라짐. 매 수집 완료 후 `all_collected_ids`에 없는 `active` 물건을 `status='closed'`로 마킹. 삭제 없이 이력 보존.
+
+## cron 스케줄
+
+```
+0  7 * * * cd /path/to/collector && python run_pipeline.py  # 오전 7시
+0 18 * * * cd /path/to/collector && python run_pipeline.py  # 오후 6시
+```
+
+온비드 공매 특성: 오전 10시~12시, 오후 2시~5시에 입찰 마감 집중 → 7시 수집으로 당일 마감 물건 확인, 18시 수집으로 낙찰 결과 및 신규 등록 물건 반영.
+
+## 완료된 작업 이력
+
+### 2026-03-27 ~ 2026-03-30
+
+| 작업 | 파일 | 내용 |
+|---|---|---|
+| API 키 보안 | `.env`, `collector/*.py` | 하드코딩 제거 → `python-dotenv` + `os.environ["ONBID_API_KEY"]` |
+| `.gitignore` 생성 | `.gitignore` | `.env`, `venv/`, `collector/onbid.db`, `collector/*.log`, `docs/` 제외 |
+| 의존성 정리 | `requirements.txt` | SQLAlchemy, pandas, apscheduler 제거 (미사용) |
+| 버그 수정 | `onbid_detail_collector.py` | `save_paps_inf`: `papsInf`가 list로 올 때 AttributeError 수정 |
+| 버그 수정 | `onbid_detail_collector.py` | 단건 실패가 전체 수집 중단시키던 문제 → try/except + rollback 처리 |
+| 파이프라인 오케스트레이터 | `collector/run_pipeline.py` | 3단계 순차 실행, 1단계 실패 시 중단 (COLLECTION_LOG 기반) |
+| cron 등록 | macOS crontab | 오전 7시, 오후 6시 run_pipeline.py 실행 |
+| ADR 작성 | `docs/adr/001-flask-api-설계.md` | Flask + raw SQLite 선택 근거 문서화 |
+
+## 다음 작업
+
+1. **Flask API 서버** (`server/app.py`) — 4개 엔드포인트 구현
+2. **`/table-relations` 커맨드** — DB PRAGMA로 실제 스키마 읽어 `docs/table_relations.md` 생성·업데이트

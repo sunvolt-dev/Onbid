@@ -463,8 +463,10 @@ def save_crtn_lst(conn, cltr_mng_no, rows):
         ))
 
 
-def save_paps_inf(conn, cltr_mng_no, paps: dict | None):
+def save_paps_inf(conn, cltr_mng_no, paps: dict | list | None):
     """공매재산명세서 저장 (1:1, REPLACE)."""
+    if isinstance(paps, list):
+        paps = paps[0] if paps else None
     if not paps:
         return
     conn.execute("""
@@ -589,21 +591,26 @@ def main():
         item = fetch_detail(cltr_mng_no, pbct_cdtn_no)
 
         if item:
-            save_detail(conn, cltr_mng_no, item)
+            try:
+                save_detail(conn, cltr_mng_no, item)
 
-            # 저장 건수 요약 로그
-            sqms_cnt  = conn.execute("SELECT COUNT(*) FROM BID_SQMS     WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-            apsl_cnt  = conn.execute("SELECT COUNT(*) FROM BID_APSL_EVL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-            leas_cnt  = conn.execute("SELECT COUNT(*) FROM BID_LEAS_INF WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-            rgst_cnt  = conn.execute("SELECT COUNT(*) FROM BID_RGST_PRMR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-            dtbt_cnt  = conn.execute("SELECT COUNT(*) FROM BID_DTBT_RQR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-            ocpy_cnt  = conn.execute("SELECT COUNT(*) FROM BID_OCPY_REL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                # 저장 건수 요약 로그
+                sqms_cnt  = conn.execute("SELECT COUNT(*) FROM BID_SQMS     WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                apsl_cnt  = conn.execute("SELECT COUNT(*) FROM BID_APSL_EVL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                leas_cnt  = conn.execute("SELECT COUNT(*) FROM BID_LEAS_INF WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                rgst_cnt  = conn.execute("SELECT COUNT(*) FROM BID_RGST_PRMR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                dtbt_cnt  = conn.execute("SELECT COUNT(*) FROM BID_DTBT_RQR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                ocpy_cnt  = conn.execute("SELECT COUNT(*) FROM BID_OCPY_REL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
 
-            log.info(
-                f"  → 저장 완료 | 면적:{sqms_cnt} 감정:{apsl_cnt} "
-                f"임대차:{leas_cnt} 등기:{rgst_cnt} 배분:{dtbt_cnt} 점유:{ocpy_cnt}"
-            )
-            success += 1
+                log.info(
+                    f"  → 저장 완료 | 면적:{sqms_cnt} 감정:{apsl_cnt} "
+                    f"임대차:{leas_cnt} 등기:{rgst_cnt} 배분:{dtbt_cnt} 점유:{ocpy_cnt}"
+                )
+                success += 1
+            except Exception as e:
+                conn.rollback()
+                log.error(f"  → 저장 실패 [{cltr_mng_no}]: {e}")
+                fail += 1
         else:
             fail += 1
 
