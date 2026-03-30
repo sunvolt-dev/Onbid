@@ -1,8 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
 import { fmtAmt, dLabel, daysLeft } from "@/utils/format";
+
+const PAGE_SIZE = 50;
 
 interface Props {
   items: BidItem[];
@@ -10,10 +13,10 @@ interface Props {
   onSortChange: (sort: FilterState["sort"]) => void;
 }
 
-function rowBg(ratio: number): string {
-  if (ratio < 60) return "bg-red-50 hover:bg-red-100";
-  if (ratio < 70) return "bg-amber-50 hover:bg-amber-100";
-  return "bg-white hover:bg-gray-50";
+function ratioDot(ratio: number): string {
+  if (ratio < 60) return "bg-red-500";
+  if (ratio < 70) return "bg-amber-400";
+  return "bg-transparent";
 }
 
 function ratioBadgeColor(ratio: number): string {
@@ -29,6 +32,13 @@ function isNewToday(firstCollected: string): boolean {
 
 export default function ItemTable({ items, filter, onSortChange }: Props) {
   const router = useRouter();
+  const [page, setPage] = useState(1);
+
+  // 아이템 목록이나 정렬 변경 시 1페이지로 리셋
+  useEffect(() => { setPage(1); }, [items, filter.sort]);
+
+  const totalPages = Math.ceil(items.length / PAGE_SIZE);
+  const pageItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const SortBtn = ({ val, label }: { val: FilterState["sort"]; label: string }) => (
     <button
@@ -51,7 +61,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
         <SortBtn val="ratio" label="비율 ↑" />
         <SortBtn val="usbd" label="유찰횟수" />
         <SortBtn val="deadline" label="마감일" />
-        <span className="ml-auto text-xs text-[#9c9a92]">총 {items.length}건</span>
+        <span className="ml-auto text-xs text-[#9c9a92]">{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, items.length)} / 총 {items.length}건</span>
       </div>
 
       {/* 테이블 */}
@@ -61,6 +71,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
             <tr className="bg-[#faf9f7] border-b border-[#e8e6df]">
               <th className="text-left px-3 py-2.5 text-xs font-semibold text-[#5f5e5a] whitespace-nowrap">물건번호</th>
               <th className="text-left px-3 py-2.5 text-xs font-semibold text-[#5f5e5a]">소재지</th>
+              <th className="text-left px-3 py-2.5 text-xs font-semibold text-[#5f5e5a] whitespace-nowrap">용도</th>
               <th className="text-right px-3 py-2.5 text-xs font-semibold text-[#5f5e5a] whitespace-nowrap">감정가</th>
               <th className="text-right px-3 py-2.5 text-xs font-semibold text-[#5f5e5a] whitespace-nowrap">최저입찰가</th>
               <th className="text-right px-3 py-2.5 text-xs font-semibold text-[#5f5e5a] whitespace-nowrap">감정가 대비</th>
@@ -73,12 +84,12 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center py-12 text-[#9c9a92] text-sm">
+                <td colSpan={10} className="text-center py-12 text-[#9c9a92] text-sm">
                   조건에 맞는 물건이 없습니다
                 </td>
               </tr>
             )}
-            {items.map((item) => {
+            {pageItems.map((item) => {
               const dl = daysLeft(item.cltr_bid_end_dt);
               const deadlineColor =
                 dl < 0 ? "text-gray-400" : dl <= 3 ? "text-red-600 font-semibold" : "text-[#3d3d3a]";
@@ -86,11 +97,12 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
               return (
                 <tr
                   key={item.cltr_mng_no}
-                  className={`border-b border-[#e8e6df] cursor-pointer transition-colors ${rowBg(item.ratio_pct)}`}
+                  className="border-b border-[#e8e6df] cursor-pointer transition-colors bg-white hover:bg-[#faf9f7]"
                   onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
                 >
                   <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ratioDot(item.ratio_pct)}`} />
                       <span className="text-xs text-[#5f5e5a] font-mono">{item.cltr_mng_no}</span>
                       {isNewToday(item.first_collected_at) && (
                         <span className="text-[10px] bg-[#185fa5] text-white rounded px-1 py-0.5 font-bold">NEW</span>
@@ -104,6 +116,10 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     <div className="text-[11px] text-[#73726c] mt-0.5">
                       {item.lctn_sd_nm} {item.lctn_sggn_nm}
                     </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="text-[11px] text-[#5f5e5a]">{item.cltr_usg_mcls_nm}</div>
+                    <div className="text-[11px] text-[#9c9a92] mt-0.5">{item.cltr_usg_scls_nm}</div>
                   </td>
                   <td className="px-3 py-2.5 text-right text-xs text-[#3d3d3a]">
                     {fmtAmt(item.apsl_evl_amt)}
@@ -161,20 +177,79 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
         </table>
       </div>
 
-      {/* 범례 */}
-      <div className="flex items-center gap-4 text-[11px] text-[#9c9a92] px-1">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-red-100 border border-red-300" />
-          <span>60% 미만</span>
+      {/* 범례 + 페이지네이션 */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-4 text-[11px] text-[#9c9a92]">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span>60% 미만</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span>60~70%</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full border border-gray-300" />
+            <span>70% 이상</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-amber-100 border border-amber-300" />
-          <span>60~70%</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-white border border-gray-200" />
-          <span>70% 이상</span>
-        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              className="px-2 py-1 text-xs rounded border border-[#d3d1c7] disabled:opacity-30 hover:border-[#185fa5] hover:text-[#185fa5] disabled:hover:border-[#d3d1c7] disabled:hover:text-inherit transition-colors"
+            >
+              «
+            </button>
+            <button
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 1}
+              className="px-2 py-1 text-xs rounded border border-[#d3d1c7] disabled:opacity-30 hover:border-[#185fa5] hover:text-[#185fa5] disabled:hover:border-[#d3d1c7] disabled:hover:text-inherit transition-colors"
+            >
+              ‹
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+              .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, idx) =>
+                p === "…" ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-xs text-[#9c9a92]">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`px-2.5 py-1 text-xs rounded border transition-colors ${
+                      page === p
+                        ? "bg-[#185fa5] text-white border-[#185fa5]"
+                        : "border-[#d3d1c7] hover:border-[#185fa5] hover:text-[#185fa5]"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page === totalPages}
+              className="px-2 py-1 text-xs rounded border border-[#d3d1c7] disabled:opacity-30 hover:border-[#185fa5] hover:text-[#185fa5] disabled:hover:border-[#d3d1c7] disabled:hover:text-inherit transition-colors"
+            >
+              ›
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              className="px-2 py-1 text-xs rounded border border-[#d3d1c7] disabled:opacity-30 hover:border-[#185fa5] hover:text-[#185fa5] disabled:hover:border-[#d3d1c7] disabled:hover:text-inherit transition-colors"
+            >
+              »
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

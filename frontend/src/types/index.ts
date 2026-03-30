@@ -84,6 +84,9 @@ export interface FilterState {
   ratio_max: number;
   usbd_min: number;
   sd_nm: string;
+  usg_mcls: string;
+  usg_scls: string;
   bookmarked: number | null;
+  pvct: "Y" | "N" | null;
   sort: "ratio" | "usbd" | "deadline";
 }

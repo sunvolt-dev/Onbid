@@ -5,14 +5,20 @@ export async function fetchItems(params: {
   ratio_max?: number;
   usbd_min?: number;
   sd_nm?: string;
+  usg_mcls?: string;
+  usg_scls?: string;
   bookmarked?: number;
+  pvct?: string;
   limit?: number;
 }): Promise<BidItem[]> {
   const q = new URLSearchParams();
   if (params.ratio_max !== undefined) q.set("ratio_max", String(params.ratio_max));
   if (params.usbd_min !== undefined && params.usbd_min > 0) q.set("usbd_min", String(params.usbd_min));
   if (params.sd_nm) q.set("sd_nm", params.sd_nm);
+  if (params.usg_mcls) q.set("usg_mcls", params.usg_mcls);
+  if (params.usg_scls) q.set("usg_scls", params.usg_scls);
   if (params.bookmarked !== null && params.bookmarked !== undefined) q.set("bookmarked", String(params.bookmarked));
+  if (params.pvct) q.set("pvct", params.pvct);
   q.set("limit", String(params.limit ?? 200));
   const res = await fetch(`${API_BASE}/api/items?${q}`);
   if (!res.ok) throw new Error("items fetch failed");

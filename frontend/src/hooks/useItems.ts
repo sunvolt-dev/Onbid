@@ -8,7 +8,10 @@ const DEFAULT_FILTER: FilterState = {
   ratio_max: 100,
   usbd_min: 0,
   sd_nm: "",
+  usg_mcls: "",
+  usg_scls: "",
   bookmarked: null,
+  pvct: null,
   sort: "ratio",
 };
 
@@ -26,7 +29,11 @@ export function useItems() {
         ratio_max: f.ratio_max,
         usbd_min: f.usbd_min,
         sd_nm: f.sd_nm,
+        usg_mcls: f.usg_mcls || undefined,
+        usg_scls: f.usg_scls || undefined,
         bookmarked: f.bookmarked ?? undefined,
+        pvct: f.pvct ?? undefined,
+        limit: 9999,
       });
       setItems(data);
     } catch (e) {

@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { FilterState } from "@/types";
 
+const USG_TREE: Record<string, string[]> = {
+  "상가용및업무용건물": ["업무시설"],
+  "용도복합용건물":     ["오피스텔", "주/상용건물"],
+};
+
 const REGIONS = [
   "서울특별시",
   "경기도",
@@ -38,11 +43,16 @@ export default function FilterPanel({ filter, onSearch }: Props) {
       ratio_max: 100,
       usbd_min: 0,
       sd_nm: "",
+      usg_mcls: "",
+      usg_scls: "",
       bookmarked: null,
+      pvct: null,
       sort: local.sort,
     };
     setLocal(def);
   }
+
+  const sclsOptions = local.usg_mcls ? USG_TREE[local.usg_mcls] ?? [] : [];
 
   return (
     <aside className="w-[230px] shrink-0 bg-[#faf9f7] border-r border-[#e8e6df] p-4 flex flex-col gap-5 min-h-screen">
@@ -91,6 +101,32 @@ export default function FilterPanel({ filter, onSearch }: Props) {
         </select>
       </div>
 
+      {/* 용도 */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-[#3d3d3a]">용도</label>
+        <select
+          value={local.usg_mcls}
+          onChange={(e) => setLocal({ ...local, usg_mcls: e.target.value, usg_scls: "" })}
+          className="text-xs border border-[#d3d1c7] rounded px-2 py-1.5 bg-white"
+        >
+          <option value="">중분류 전체</option>
+          {Object.keys(USG_TREE).map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <select
+          value={local.usg_scls}
+          onChange={(e) => setLocal({ ...local, usg_scls: e.target.value })}
+          disabled={!local.usg_mcls}
+          className="text-xs border border-[#d3d1c7] rounded px-2 py-1.5 bg-white disabled:opacity-40"
+        >
+          <option value="">소분류 전체</option>
+          {sclsOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+
       {/* 지역 */}
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-[#3d3d3a]">지역</label>
@@ -104,6 +140,26 @@ export default function FilterPanel({ filter, onSearch }: Props) {
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
+      </div>
+
+      {/* 수의계약 */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-[#3d3d3a]">수의계약</label>
+        <div className="flex gap-2">
+          {([null, "Y", "N"] as const).map((val) => (
+            <button
+              key={String(val)}
+              onClick={() => setLocal({ ...local, pvct: val })}
+              className={`flex-1 text-xs py-1.5 rounded border transition-colors ${
+                local.pvct === val
+                  ? "bg-[#185fa5] text-white border-[#185fa5]"
+                  : "bg-white text-[#3d3d3a] border-[#d3d1c7] hover:border-[#185fa5] hover:text-[#185fa5]"
+              }`}
+            >
+              {val === null ? "전체" : val === "Y" ? "가능" : "불가능"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 관심물건만 */}
