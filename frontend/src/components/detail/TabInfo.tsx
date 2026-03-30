@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Script from "next/script";
 import { fetchItemInfo } from "@/api";
 import type { BidItem, ItemInfo } from "@/types";
 import { sqmsToPyeong } from "@/utils/format";
@@ -22,8 +21,8 @@ export default function TabInfo({ item }: Props) {
   const [info, setInfo] = useState<ItemInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [infoError, setInfoError] = useState(false);
-  const [sdkReady, setSdkReady] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInitialized = useRef(false);
 
   useEffect(() => {
     fetchItemInfo(item.cltr_mng_no)
@@ -32,51 +31,60 @@ export default function TabInfo({ item }: Props) {
       .finally(() => setInfoLoading(false));
   }, [item.cltr_mng_no]);
 
-  // SDK 로드 완료 후 또는 이미 로드된 경우 지도 초기화
+  // 카카오맵 SDK 스크립트 직접 로드 + 지도 초기화
   useEffect(() => {
-    if (!sdkReady || !mapRef.current || !KAKAO_KEY) return;
+    if (!KAKAO_KEY || !mapRef.current || mapInitialized.current) return;
 
-    const address = `${item.lctn_sd_nm} ${item.lctn_sggn_nm} ${item.lctn_emd_nm}`;
+    function initMap() {
+      if (!mapRef.current || mapInitialized.current) return;
+      mapInitialized.current = true;
 
-    window.kakao.maps.load(() => {
-      const geocoder = new window.kakao.maps.services.Geocoder();
+      const address = `${item.lctn_sd_nm} ${item.lctn_sggn_nm} ${item.lctn_emd_nm}`;
 
-      geocoder.addressSearch(address, (result: any[], status: string) => {
-        if (!mapRef.current) return;
+      window.kakao.maps.load(() => {
+        const geocoder = new window.kakao.maps.services.Geocoder();
 
-        let coords: { getLat: () => number; getLng: () => number };
+        geocoder.addressSearch(address, (result: any[], status: string) => {
+          if (!mapRef.current) return;
 
-        if (status === window.kakao.maps.services.Status.OK) {
-          coords = new window.kakao.maps.LatLng(
-            parseFloat(result[0].y),
-            parseFloat(result[0].x)
-          );
-        } else {
-          // 지오코딩 실패 시 서울 시청 기본 좌표
-          coords = new window.kakao.maps.LatLng(37.5665, 126.9780);
-        }
+          const coords =
+            status === window.kakao.maps.services.Status.OK
+              ? new window.kakao.maps.LatLng(parseFloat(result[0].y), parseFloat(result[0].x))
+              : new window.kakao.maps.LatLng(37.5665, 126.978);
 
-        const map = new window.kakao.maps.Map(mapRef.current, {
-          center: coords,
-          level: 4,
+          const map = new window.kakao.maps.Map(mapRef.current, {
+            center: coords,
+            level: 4,
+          });
+
+          new window.kakao.maps.Marker({ position: coords, map });
+
+          new window.kakao.maps.CustomOverlay({
+            position: coords,
+            map,
+            content: `<div style="
+              background:#185fa5;color:#fff;font-size:11px;font-weight:700;
+              padding:4px 10px;border-radius:99px;white-space:nowrap;
+              box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:42px;
+            ">${item.lctn_sggn_nm}</div>`,
+            yAnchor: 1,
+          });
         });
-
-        const marker = new window.kakao.maps.Marker({ position: coords });
-        marker.setMap(map);
-
-        const overlay = new window.kakao.maps.CustomOverlay({
-          position: coords,
-          content: `<div style="
-            background:#185fa5;color:#fff;font-size:11px;font-weight:700;
-            padding:4px 10px;border-radius:99px;white-space:nowrap;
-            box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:42px;
-          ">${item.lctn_sggn_nm}</div>`,
-          yAnchor: 1,
-        });
-        overlay.setMap(map);
       });
-    });
-  }, [sdkReady, item]);
+    }
+
+    // 이미 로드된 경우
+    if (window.kakao?.maps?.load) {
+      initMap();
+      return;
+    }
+
+    // 스크립트 삽입
+    const script = document.createElement("script");
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&libraries=services&autoload=false`;
+    script.onload = initMap;
+    document.head.appendChild(script);
+  }, [item]);
 
   const paps = info?.paps_inf;
   const papsNote =
@@ -92,16 +100,7 @@ export default function TabInfo({ item }: Props) {
   );
 
   return (
-    <>
-      {/* 카카오맵 SDK 로드 */}
-      {KAKAO_KEY && (
-        <Script
-          src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&libraries=services&autoload=false`}
-          onLoad={() => setSdkReady(true)}
-        />
-      )}
-
-      <div className="flex gap-6">
+    <div className="flex gap-6">
         {/* 좌: 정보 그리드 */}
         <div className="flex-1 bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-5">
           <h3 className="text-sm font-semibold text-[#1a1a18] mb-3">물건 기본정보</h3>
@@ -195,7 +194,6 @@ export default function TabInfo({ item }: Props) {
             )}
           </div>
         </div>
-      </div>
-    </>
+    </div>
   );
 }

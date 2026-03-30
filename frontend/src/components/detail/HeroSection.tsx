@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { fmtKRW, fmtAmt, sqmsToPyeong, dLabel, daysLeft } from "@/utils/format";
 import type { BidItem } from "@/types";
 
@@ -20,13 +19,10 @@ export default function HeroSection({ item, onBookmark }: Props) {
         {/* 썸네일 */}
         <div className="w-52 h-40 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
           {item.thnl_img_url ? (
-            <Image
+            <img
               src={item.thnl_img_url}
               alt={item.onbid_cltr_nm}
-              width={208}
-              height={160}
               className="object-cover w-full h-full"
-              unoptimized
             />
           ) : (
             <span className="text-[#9c9a92] text-xs">이미지 없음</span>

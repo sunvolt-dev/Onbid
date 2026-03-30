@@ -18,7 +18,7 @@ def get_db():
 # ─────────────────────────────────────────
 # GET /api/items
 # 목록 + 필터 + 정렬
-# 쿼리 파라미터: ratio_max, usbd_min, sd_nm, bookmarked, limit
+# 쿼리 파라미터: ratio_max, usbd_min, sd_nm, bookmarked, pvct, limit
 # ─────────────────────────────────────────
 @app.route("/api/items")
 def get_items():
@@ -26,6 +26,9 @@ def get_items():
     usbd_min   = request.args.get("usbd_min",   type=int)
     sd_nm      = request.args.get("sd_nm",      type=str)
     bookmarked = request.args.get("bookmarked", type=int)
+    pvct       = request.args.get("pvct",       type=str)
+    usg_mcls   = request.args.get("usg_mcls",   type=str)
+    usg_scls   = request.args.get("usg_scls",   type=str)
     limit      = request.args.get("limit",      type=int, default=100)
 
     conditions = ["status = 'active'"]
@@ -43,6 +46,15 @@ def get_items():
     if bookmarked is not None:
         conditions.append("is_bookmarked = ?")
         params.append(bookmarked)
+    if pvct in ("Y", "N"):
+        conditions.append("pvct_trgt_yn = ?")
+        params.append(pvct)
+    if usg_mcls:
+        conditions.append("cltr_usg_mcls_nm = ?")
+        params.append(usg_mcls)
+    if usg_scls:
+        conditions.append("cltr_usg_scls_nm = ?")
+        params.append(usg_scls)
 
     where = " AND ".join(conditions)
     params.append(limit)
@@ -246,6 +258,7 @@ def toggle_bookmark(item_id):
         conn.close()
 
     return jsonify({"cltr_mng_no": item_id, "is_bookmarked": new_value})
+
 
 
 if __name__ == "__main__":
