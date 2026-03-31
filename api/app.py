@@ -39,7 +39,7 @@ def get_items():
     usg_scls   = request.args.get("usg_scls",   type=str)
     limit      = request.args.get("limit",      type=int, default=100)
 
-    conditions = ["status = 'active'", "cltr_bid_end_dt >= date('now')"]
+    conditions = ["status = 'active'"]
     params = []
 
     if ratio_min is not None:

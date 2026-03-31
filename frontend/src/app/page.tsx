@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import FilterPanel from "@/components/FilterPanel";
-import StatsBar from "@/components/StatsBar";
+
 import ItemTable from "@/components/ItemTable";
 import { useItems } from "@/hooks/useItems";
 
@@ -34,8 +34,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 통계바 */}
-        <StatsBar />
 
         {/* 에러 */}
         {error && (
