@@ -25,14 +25,20 @@ BID_ITEMS(물건목록)에서 cltrMngNo + pbctCdtnNo 를 읽어
 """
 
 import os
+import sys
 import sqlite3
 import requests
 import logging
 import time
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+# 프로젝트 루트를 sys.path에 추가
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from utils import to_int, to_float, to_str, now_str, to_list
+from db.schema_detail import init_detail_db
 
 # ─────────────────────────────────────────
 # 설정 (기존 collector.py와 동일 값 사용)
@@ -54,187 +60,6 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────
-# 유틸
-# ─────────────────────────────────────────
-def to_int(v):
-    try:
-        return int(float(v)) if v not in (None, "", "null") else None
-    except Exception:
-        return None
-
-def to_float(v):
-    try:
-        return float(v) if v not in (None, "", "null") else None
-    except Exception:
-        return None
-
-def to_str(v):
-    return str(v).strip() if v not in (None, "", "null") else None
-
-def now_str():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-def to_list(v):
-    """API 응답에서 배열 필드를 안전하게 리스트로 변환.
-    - None / 빈 문자열 → 빈 리스트
-    - dict(단건)       → [dict]
-    - list             → list 그대로
-    """
-    if not v:
-        return []
-    if isinstance(v, dict):
-        return [v]
-    if isinstance(v, list):
-        return v
-    return []
-
-
-# ─────────────────────────────────────────
-# DB 초기화: 서브 테이블 생성 + 마이그레이션
-# ─────────────────────────────────────────
-def init_detail_db(conn: sqlite3.Connection):
-    conn.executescript("""
-        -- ── 면적정보 ────────────────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_SQMS (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            cland_cont      TEXT,   -- 종별(지목): 예) 건물>건물
-            sqms_cont       TEXT,   -- 면적 (㎡)
-            purs_alc_cont   TEXT,   -- 지분
-            dtl_cltr_nm     TEXT    -- 비고 (상세 물건명/소재지)
-        );
-        CREATE INDEX IF NOT EXISTS idx_sqms_cltr ON BID_SQMS(cltr_mng_no);
-
-        -- ── 감정평가정보 ─────────────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_APSL_EVL (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            apsl_evl_org_nm TEXT,   -- 감정평가기관명
-            apsl_appr_nm    TEXT,   -- 감정평가사명
-            apsl_evl_ymd    TEXT,   -- 평가일자 (yyyyMMdd)
-            apsl_evl_amt    INTEGER,-- 감정평가금액 (원)
-            url_adr         TEXT    -- 감정평가서 첨부파일 URL
-        );
-        CREATE INDEX IF NOT EXISTS idx_apsl_cltr ON BID_APSL_EVL(cltr_mng_no);
-
-        -- ── 임대차정보 (압류재산 0007만) ─────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_LEAS_INF (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            irst_div_nm     TEXT,   -- 임대차 내용 구분명
-            cltr_inpr_nm    TEXT,   -- 임차인 성명
-            bid_grtee_amt   INTEGER,-- 보증금액 (원)
-            mthr_amt        REAL,   -- 차임/월세금액 (원)
-            conv_grtee_amt  REAL,   -- 환산보증금액 (원)
-            cfmtn_ymd       TEXT,   -- 확정(설정)일자 (yyyyMMdd)
-            mvin_ymd        TEXT    -- 전입일자 (yyyyMMdd)
-        );
-        CREATE INDEX IF NOT EXISTS idx_leas_cltr ON BID_LEAS_INF(cltr_mng_no);
-
-        -- ── 등기사항증명서 주요정보 (압류재산 0007만) ────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_RGST_PRMR (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            irst_div_nm     TEXT,   -- 권리종류명
-            cltr_inpr_nm    TEXT,   -- 권리자명
-            rgst_ymd        TEXT,   -- 등기설정일자 (yyyyMMdd)
-            inpr_stng_amt   INTEGER -- 설정금액 (원)
-        );
-        CREATE INDEX IF NOT EXISTS idx_rgst_cltr ON BID_RGST_PRMR(cltr_mng_no);
-
-        -- ── 배분요구사항 (압류재산 0007만) ──────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_DTBT_RQR (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            rgt_rel_cd_nm   TEXT,   -- 권리종류
-            acpm_prpt_nm    TEXT,   -- 권리자명
-            stng_ymd        TEXT,   -- 설정일자 (yyyyMMdd)
-            bond_stng_amt   INTEGER,-- 설정금액 (원)
-            dtbt_rqr_yn     TEXT,   -- 배분요구여부 (Y/N)
-            dtbt_rqr_ymd    TEXT,   -- 배분요구일자 (yyyyMMdd)
-            dtbt_rqr_amt    INTEGER,-- 배분요구채권금액 (원)
-            ersr_psbl_yn    TEXT,   -- 말소가능여부 (Y/N)
-            etc_cont        TEXT    -- 기타내용
-        );
-        CREATE INDEX IF NOT EXISTS idx_dtbt_cltr ON BID_DTBT_RQR(cltr_mng_no);
-
-        -- ── 점유관계 (압류재산 0007만) ───────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_OCPY_REL (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            ocpy_rel_cd_nm  TEXT,   -- 점유관계 구분명
-            ocpy_irps_nm    TEXT,   -- 점유관계인 성명
-            ctrt_ymd        TEXT,   -- 계약일자 (yyyyMMdd)
-            mvin_ymd        TEXT,   -- 전입일자 (yyyyMMdd, 사업자등록신청일)
-            cfmtn_ymd       TEXT,   -- 확정일자 (yyyyMMdd)
-            acpm_grtee_amt  INTEGER,-- 보증금액 (원)
-            rnt_amt         REAL,   -- 차임금액 (원)
-            lsd_part_cont   TEXT    -- 임차부분 내용
-        );
-        CREATE INDEX IF NOT EXISTS idx_ocpy_cltr ON BID_OCPY_REL(cltr_mng_no);
-
-        -- ── 일괄입찰물건목록 ─────────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_BATC_CLTR (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            sub_cltr_mng_no TEXT,   -- 일괄묶음 내 개별 물건관리번호
-            prpt_div_nm     TEXT,   -- 재산유형명
-            dsps_mthod_nm   TEXT,   -- 처분방식명
-            cltr_usg_mcls_nm TEXT,  -- 용도중분류명
-            cltr_usg_scls_nm TEXT,  -- 용도소분류명
-            onbid_cltr_nm   TEXT,   -- 물건명
-            usbd_nft        INTEGER,-- 유찰횟수
-            land_sqms       REAL,   -- 토지면적 (㎡)
-            bld_sqms        REAL,   -- 건물면적 (㎡)
-            apsl_evl_amt    INTEGER -- 감정평가금액 (원)
-        );
-        CREATE INDEX IF NOT EXISTS idx_batc_cltr ON BID_BATC_CLTR(cltr_mng_no);
-
-        -- ── 정정내역 ─────────────────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_CRTN_LST (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no     TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            crtn_ymd        TEXT,   -- 정정일자 (yyyyMMdd)
-            crtn_item_cont  TEXT,   -- 변경항목명
-            bfmdf_lst_cont  TEXT,   -- 변경 전 내용
-            afmdf_lst_cont  TEXT    -- 변경 후 내용
-        );
-        CREATE INDEX IF NOT EXISTS idx_crtn_cltr ON BID_CRTN_LST(cltr_mng_no);
-
-        -- ── 공매재산명세서 (1:1) ─────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_PAPS_INF (
-            cltr_mng_no         TEXT    PRIMARY KEY REFERENCES BID_ITEMS(cltr_mng_no),
-            dlgt_org_nm         TEXT,   -- 처분청
-            mng_no              TEXT,   -- 관리번호
-            pbanc_ymd           TEXT,   -- 공매공고일자 (yyyyMMdd)
-            dtbt_rqr_edtm_ymd   TEXT,   -- 배분요구 종기일자 (yyyyMMdd)
-            pbct_tdps           TEXT,   -- 공매보증금
-            zadr                TEXT,   -- 지번주소
-            alc_cont            TEXT,   -- 지분내용
-            pbct_espc           TEXT,   -- 공매(매각)예정가격
-            bid_perd            TEXT,   -- 입찰서 제출기간
-            opbd_ymd            TEXT,   -- 개찰일자
-            dodis_p_dudt        TEXT,   -- 매각결정기일
-            ersr_excl_rgt_cont  TEXT,   -- 말소제외권리내용
-            stty_ebr_vld_cont   TEXT,   -- 법정지상권 유효내용
-            pytn_mtrs_cont      TEXT,   -- 유의사항내용
-            prcv_ymd            TEXT,   -- 현황조사일자
-            etc_smry_cont       TEXT,   -- 기타요약내용
-            szr_prpt_indct_cont TEXT    -- 압류재산 표시내용
-        );
-    """)
-
-    # BID_ITEMS에 상세 조회 추적 컬럼 추가 (마이그레이션)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(BID_ITEMS)")}
-    if "detail_fetched_at" not in existing_cols:
-        conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN detail_fetched_at TEXT")
-        log.info("마이그레이션: BID_ITEMS.detail_fetched_at 컬럼 추가")
-
-    conn.commit()
-    log.info("상세 DB 초기화 완료")
 
 
 # ─────────────────────────────────────────
@@ -569,64 +394,65 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
 # ─────────────────────────────────────────
 def main():
     conn = sqlite3.connect(DB_PATH)
-    init_detail_db(conn)
+    try:
+        init_detail_db(conn)
 
-    pending = get_pending_items(conn, force=FORCE_REFETCH)
-    total   = len(pending)
+        pending = get_pending_items(conn, force=FORCE_REFETCH)
+        total   = len(pending)
 
-    if total == 0:
-        log.info("상세 조회 대상 물건 없음 (모두 최신 상태)")
-        conn.close()
-        return
+        if total == 0:
+            log.info("상세 조회 대상 물건 없음 (모두 최신 상태)")
+            return
 
-    log.info(f"상세 조회 대상: {total}건 시작")
-    log.info("=" * 55)
+        log.info(f"상세 조회 대상: {total}건 시작")
+        log.info("=" * 55)
 
-    success = 0
-    fail    = 0
+        success = 0
+        fail    = 0
 
-    for idx, (cltr_mng_no, pbct_cdtn_no) in enumerate(pending, 1):
-        log.info(f"[{idx}/{total}] {cltr_mng_no} (공매조건번호={pbct_cdtn_no})")
+        for idx, (cltr_mng_no, pbct_cdtn_no) in enumerate(pending, 1):
+            log.info(f"[{idx}/{total}] {cltr_mng_no} (공매조건번호={pbct_cdtn_no})")
 
-        item = fetch_detail(cltr_mng_no, pbct_cdtn_no)
+            item = fetch_detail(cltr_mng_no, pbct_cdtn_no)
 
-        if item:
-            try:
-                save_detail(conn, cltr_mng_no, item)
+            if item:
+                try:
+                    save_detail(conn, cltr_mng_no, item)
 
-                # 저장 건수 요약 로그
-                sqms_cnt  = conn.execute("SELECT COUNT(*) FROM BID_SQMS     WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-                apsl_cnt  = conn.execute("SELECT COUNT(*) FROM BID_APSL_EVL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-                leas_cnt  = conn.execute("SELECT COUNT(*) FROM BID_LEAS_INF WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-                rgst_cnt  = conn.execute("SELECT COUNT(*) FROM BID_RGST_PRMR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-                dtbt_cnt  = conn.execute("SELECT COUNT(*) FROM BID_DTBT_RQR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
-                ocpy_cnt  = conn.execute("SELECT COUNT(*) FROM BID_OCPY_REL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    # 저장 건수 요약 로그
+                    sqms_cnt  = conn.execute("SELECT COUNT(*) FROM BID_SQMS     WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    apsl_cnt  = conn.execute("SELECT COUNT(*) FROM BID_APSL_EVL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    leas_cnt  = conn.execute("SELECT COUNT(*) FROM BID_LEAS_INF WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    rgst_cnt  = conn.execute("SELECT COUNT(*) FROM BID_RGST_PRMR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    dtbt_cnt  = conn.execute("SELECT COUNT(*) FROM BID_DTBT_RQR WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
+                    ocpy_cnt  = conn.execute("SELECT COUNT(*) FROM BID_OCPY_REL WHERE cltr_mng_no=?", (cltr_mng_no,)).fetchone()[0]
 
-                log.info(
-                    f"  → 저장 완료 | 면적:{sqms_cnt} 감정:{apsl_cnt} "
-                    f"임대차:{leas_cnt} 등기:{rgst_cnt} 배분:{dtbt_cnt} 점유:{ocpy_cnt}"
-                )
-                success += 1
-            except Exception as e:
-                conn.rollback()
-                log.error(f"  → 저장 실패 [{cltr_mng_no}]: {e}")
+                    log.info(
+                        f"  → 저장 완료 | 면적:{sqms_cnt} 감정:{apsl_cnt} "
+                        f"임대차:{leas_cnt} 등기:{rgst_cnt} 배분:{dtbt_cnt} 점유:{ocpy_cnt}"
+                    )
+                    success += 1
+                except Exception as e:
+                    conn.rollback()
+                    log.error(f"  → 저장 실패 [{cltr_mng_no}]: {e}")
+                    fail += 1
+            else:
                 fail += 1
-        else:
-            fail += 1
 
-        # API 10 tps 제한 준수
-        time.sleep(SLEEP_SEC)
+            # API 10 tps 제한 준수
+            time.sleep(SLEEP_SEC)
 
-        # BATCH_SIZE 단위로 중간 커밋 (이미 save_detail 내부에서 commit하지만 명시적 보장)
-        if idx % BATCH_SIZE == 0:
-            conn.commit()
-            log.info(f"  ── 중간 저장 ({idx}/{total}건 처리됨) ──")
+            # BATCH_SIZE 단위로 중간 커밋 (이미 save_detail 내부에서 commit하지만 명시적 보장)
+            if idx % BATCH_SIZE == 0:
+                conn.commit()
+                log.info(f"  ── 중간 저장 ({idx}/{total}건 처리됨) ──")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    log.info("=" * 55)
-    log.info(f"상세 조회 완료 | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
+        log.info("=" * 55)
+        log.info(f"상세 조회 완료 | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

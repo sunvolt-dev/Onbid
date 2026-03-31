@@ -4,7 +4,8 @@ import sqlite3
 from flask import Flask, jsonify, request, abort
 from flask_cors import CORS
 
-# collector 모듈 import 경로 추가
+# 프로젝트 루트 + collector를 sys.path에 추가
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "collector"))
 
 app = Flask(__name__)
@@ -38,7 +39,7 @@ def get_items():
     usg_scls   = request.args.get("usg_scls",   type=str)
     limit      = request.args.get("limit",      type=int, default=100)
 
-    conditions = ["status = 'active'"]
+    conditions = ["status = 'active'", "cltr_bid_end_dt >= date('now')"]
     params = []
 
     if ratio_min is not None:
@@ -120,16 +121,26 @@ def get_stats():
         pvct_count = conn.execute(
             "SELECT COUNT(*) FROM BID_ITEMS WHERE status = 'active' AND pvct_trgt_yn = 'Y'"
         ).fetchone()[0]
+
+        ratio_below60 = conn.execute(
+            "SELECT COUNT(*) FROM BID_ITEMS WHERE status = 'active' AND ratio_pct < 60"
+        ).fetchone()[0]
+
+        ratio_60_70 = conn.execute(
+            "SELECT COUNT(*) FROM BID_ITEMS WHERE status = 'active' AND ratio_pct >= 60 AND ratio_pct < 70"
+        ).fetchone()[0]
     finally:
         conn.close()
 
     return jsonify({
-        "total":      total,
-        "bookmarked": bookmarked,
-        "pvct_count": pvct_count,
-        "ratio_avg":  round(ratio_row[0], 1) if ratio_row[0] else None,
-        "ratio_min":  ratio_row[1],
-        "by_region":  [dict(r) for r in by_region],
+        "total":         total,
+        "bookmarked":    bookmarked,
+        "pvct_count":    pvct_count,
+        "ratio_avg":     round(ratio_row[0], 1) if ratio_row[0] else None,
+        "ratio_min":     ratio_row[1],
+        "ratio_below60": ratio_below60,
+        "ratio_60_70":   ratio_60_70,
+        "by_region":     [dict(r) for r in by_region],
     })
 
 
@@ -286,11 +297,13 @@ def check_item(item_id):
     from onbid_bid_collector import fetch_bid
 
     conn = get_db()
-    item = conn.execute(
-        "SELECT cltr_mng_no, pbct_cdtn_no, status FROM BID_ITEMS WHERE cltr_mng_no = ?",
-        (item_id,),
-    ).fetchone()
-    conn.close()
+    try:
+        item = conn.execute(
+            "SELECT cltr_mng_no, pbct_cdtn_no, status FROM BID_ITEMS WHERE cltr_mng_no = ?",
+            (item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
     if item is None:
         abort(404)
@@ -300,12 +313,14 @@ def check_item(item_id):
     if data is None:
         # API가 NODATA → 종료된 물건. DB 상태 업데이트
         conn2 = sqlite3.connect(DB_PATH)
-        conn2.execute(
-            "UPDATE BID_ITEMS SET status = 'closed' WHERE cltr_mng_no = ?",
-            (item_id,),
-        )
-        conn2.commit()
-        conn2.close()
+        try:
+            conn2.execute(
+                "UPDATE BID_ITEMS SET status = 'closed' WHERE cltr_mng_no = ?",
+                (item_id,),
+            )
+            conn2.commit()
+        finally:
+            conn2.close()
         return jsonify({"alive": False, "status": "closed"})
 
     return jsonify({"alive": True, "status": "active"})
@@ -317,86 +332,89 @@ def check_item(item_id):
 # ─────────────────────────────────────────
 @app.route("/api/items/<item_id>/refresh", methods=["POST"])
 def refresh_item(item_id):
-    from onbid_detail_collector import fetch_detail, save_detail, init_detail_db
-    from onbid_bid_collector import fetch_bid, save_bid, init_bid_db
+    from onbid_detail_collector import fetch_detail, save_detail
+    from onbid_bid_collector import fetch_bid, save_bid
+    from db.schema_detail import init_detail_db
+    from db.schema_bid import init_bid_db
 
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    try:
+        conn.row_factory = sqlite3.Row
 
-    item = conn.execute(
-        "SELECT cltr_mng_no, pbct_cdtn_no FROM BID_ITEMS WHERE cltr_mng_no = ?",
-        (item_id,),
-    ).fetchone()
+        item = conn.execute(
+            "SELECT cltr_mng_no, pbct_cdtn_no FROM BID_ITEMS WHERE cltr_mng_no = ?",
+            (item_id,),
+        ).fetchone()
 
-    if item is None:
+        if item is None:
+            abort(404)
+
+        cltr_mng_no = item["cltr_mng_no"]
+        pbct_cdtn_no = item["pbct_cdtn_no"]
+        results = {"detail": False, "bid": False}
+
+        # 상세 정보 재수집
+        try:
+            init_detail_db(conn)
+            detail_data = fetch_detail(cltr_mng_no, pbct_cdtn_no)
+            if detail_data:
+                save_detail(conn, cltr_mng_no, detail_data)
+                results["detail"] = True
+        except Exception:
+            pass
+
+        # 입찰 정보 재수집
+        try:
+            init_bid_db(conn)
+            bid_data = fetch_bid(cltr_mng_no, pbct_cdtn_no)
+            if bid_data:
+                save_bid(conn, cltr_mng_no, bid_data)
+                results["bid"] = True
+
+                # 원본 API 응답에서 현재 회차 데이터 직접 추출
+                raw = bid_data
+                if "body" in bid_data:
+                    items_raw = (bid_data.get("body") or {}).get("items", {}).get("item")
+                    if isinstance(items_raw, list):
+                        raw = items_raw[0]
+                    elif isinstance(items_raw, dict):
+                        raw = items_raw
+
+                usbd = raw.get("usbdNft")
+                cur_price = raw.get("prcnNsqLowstBidPrc") or raw.get("lowstBidPrc")
+
+                if usbd is not None or cur_price is not None:
+                    apsl = conn.execute(
+                        "SELECT apsl_evl_amt FROM BID_ITEMS WHERE cltr_mng_no = ?",
+                        (cltr_mng_no,),
+                    ).fetchone()
+                    updates = {}
+                    if usbd is not None:
+                        updates["usbd_nft"] = int(usbd)
+                    if cur_price is not None:
+                        price = int(float(cur_price))
+                        updates["lowst_bid_prc"] = price
+                        if apsl and apsl["apsl_evl_amt"]:
+                            updates["ratio_pct"] = round(price / apsl["apsl_evl_amt"] * 100, 2)
+                    if updates:
+                        set_clause = ", ".join(f"{k} = ?" for k in updates)
+                        conn.execute(
+                            f"UPDATE BID_ITEMS SET {set_clause} WHERE cltr_mng_no = ?",
+                            (*updates.values(), cltr_mng_no),
+                        )
+                        conn.commit()
+        except Exception:
+            pass
+
+        # 갱신된 데이터 반환
+        conn.row_factory = sqlite3.Row
+        updated = conn.execute(
+            "SELECT * FROM BID_ITEMS WHERE cltr_mng_no = ?", (item_id,)
+        ).fetchone()
+
+        return jsonify({"item": dict(updated), "refreshed": results})
+    finally:
         conn.close()
-        abort(404)
-
-    cltr_mng_no = item["cltr_mng_no"]
-    pbct_cdtn_no = item["pbct_cdtn_no"]
-    results = {"detail": False, "bid": False}
-
-    # 상세 정보 재수집
-    try:
-        init_detail_db(conn)
-        detail_data = fetch_detail(cltr_mng_no, pbct_cdtn_no)
-        if detail_data:
-            save_detail(conn, cltr_mng_no, detail_data)
-            results["detail"] = True
-    except Exception:
-        pass
-
-    # 입찰 정보 재수집
-    try:
-        init_bid_db(conn)
-        bid_data = fetch_bid(cltr_mng_no, pbct_cdtn_no)
-        if bid_data:
-            save_bid(conn, cltr_mng_no, bid_data)
-            results["bid"] = True
-
-            # 원본 API 응답에서 현재 회차 데이터 직접 추출
-            raw = bid_data
-            if "body" in bid_data:
-                items_raw = (bid_data.get("body") or {}).get("items", {}).get("item")
-                if isinstance(items_raw, list):
-                    raw = items_raw[0]
-                elif isinstance(items_raw, dict):
-                    raw = items_raw
-
-            usbd = raw.get("usbdNft")
-            cur_price = raw.get("prcnNsqLowstBidPrc") or raw.get("lowstBidPrc")
-
-            if usbd is not None or cur_price is not None:
-                apsl = conn.execute(
-                    "SELECT apsl_evl_amt FROM BID_ITEMS WHERE cltr_mng_no = ?",
-                    (cltr_mng_no,),
-                ).fetchone()
-                updates = {}
-                if usbd is not None:
-                    updates["usbd_nft"] = int(usbd)
-                if cur_price is not None:
-                    price = int(float(cur_price))
-                    updates["lowst_bid_prc"] = price
-                    if apsl and apsl["apsl_evl_amt"]:
-                        updates["ratio_pct"] = round(price / apsl["apsl_evl_amt"] * 100, 1)
-                if updates:
-                    set_clause = ", ".join(f"{k} = ?" for k in updates)
-                    conn.execute(
-                        f"UPDATE BID_ITEMS SET {set_clause} WHERE cltr_mng_no = ?",
-                        (*updates.values(), cltr_mng_no),
-                    )
-                    conn.commit()
-    except Exception:
-        pass
-
-    # 갱신된 데이터 반환
-    conn.row_factory = sqlite3.Row
-    updated = conn.execute(
-        "SELECT * FROM BID_ITEMS WHERE cltr_mng_no = ?", (item_id,)
-    ).fetchone()
-    conn.close()
-
-    return jsonify({"item": dict(updated), "refreshed": results})
 
 
 if __name__ == "__main__":

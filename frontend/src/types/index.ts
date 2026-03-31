@@ -39,6 +39,8 @@ export interface Stats {
   pvct_count: number;
   ratio_avg: number | null;
   ratio_min: number | null;
+  ratio_below60: number;
+  ratio_60_70: number;
   by_region: { lctn_sd_nm: string; cnt: number }[];
 }
 
