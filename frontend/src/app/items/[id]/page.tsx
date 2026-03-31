@@ -141,8 +141,17 @@ export default function ItemDetailPage({
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-6 flex flex-col gap-6">
-        {/* 종료 배너 */}
-        {closed && (
+        {/* 종료 / 수의계약 배너 */}
+        {closed && item.pvct_trgt_yn === "Y" && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-3 flex items-center gap-3">
+            <span className="text-lg">📋</span>
+            <div>
+              <p className="text-sm font-semibold text-blue-700">수의계약 가능 물건입니다</p>
+              <p className="text-xs text-blue-500 mt-0.5">정규 입찰은 종료되었으나, 수의계약으로 매수할 수 있습니다.</p>
+            </div>
+          </div>
+        )}
+        {closed && item.pvct_trgt_yn !== "Y" && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-3 flex items-center gap-3">
             <span className="text-lg">⚠️</span>
             <div>

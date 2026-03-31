@@ -2,8 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchItemInfo } from "@/api";
+import { LabeledTable, type ColDef } from "@/components/LabeledTable";
 import type { BidItem, ItemInfo } from "@/types";
 import { sqmsToPyeong } from "@/utils/format";
+
+const fmtSqms = (v: unknown) => {
+  if (v == null || v === "") return "-";
+  const s = String(v).trim();
+  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  if (!isNaN(n)) return `${s} (약 ${(n * 0.3025).toFixed(1)}평)`;
+  return s;
+};
+
+const SQMS_COLS: ColDef[] = [
+  { key: "cland_cont", label: "종별(지목)" },
+  { key: "sqms_cont", label: "면적", fmt: fmtSqms },
+  { key: "purs_alc_cont", label: "지분" },
+  { key: "dtl_cltr_nm", label: "비고" },
+];
 
 interface Props {
   item: BidItem;
@@ -86,12 +102,6 @@ export default function TabInfo({ item }: Props) {
     document.head.appendChild(script);
   }, [item]);
 
-  const paps = info?.paps_inf;
-  const papsNote =
-    paps && typeof paps === "object" && "pbct_tdps" in paps
-      ? String(paps.pbct_tdps ?? "")
-      : "";
-
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex gap-2 py-2 border-b border-[#e8e6df] last:border-0">
       <span className="text-xs text-[#9c9a92] w-28 shrink-0">{label}</span>
@@ -123,58 +133,45 @@ export default function TabInfo({ item }: Props) {
             <div className="mt-4 text-xs text-red-500">상세 정보를 불러올 수 없습니다.</div>
           )}
 
-          {papsNote && (
+          {(item.zadr_nm || item.loc_vnty_pscd_cont || item.utlz_pscd_cont || item.cltr_etc_cont || item.icdl_cdtn_cont) && (
             <div className="mt-4">
-              <p className="text-xs font-semibold text-[#3d3d3a] mb-1">명세서 특이사항</p>
-              <p className="text-xs text-[#5f5e5a] bg-amber-50 border border-amber-200 rounded p-3 whitespace-pre-wrap">
-                {papsNote}
-              </p>
+              <h3 className="text-sm font-semibold text-[#1a1a18] mb-3">위치 및 이용현황</h3>
+              {item.zadr_nm && <InfoRow label="지번" value={item.zadr_nm} />}
+              {item.cltr_radr && <InfoRow label="도로명" value={item.cltr_radr} />}
+              {item.loc_vnty_pscd_cont && (
+                <div className="py-2 border-b border-[#e8e6df]">
+                  <span className="text-xs text-[#9c9a92] block mb-1">위치 및 부근현황</span>
+                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.loc_vnty_pscd_cont}</p>
+                </div>
+              )}
+              {item.utlz_pscd_cont && (
+                <div className="py-2 border-b border-[#e8e6df]">
+                  <span className="text-xs text-[#9c9a92] block mb-1">이용현황</span>
+                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.utlz_pscd_cont}</p>
+                </div>
+              )}
+              {item.icdl_cdtn_cont && (
+                <div className="py-2 border-b border-[#e8e6df]">
+                  <span className="text-xs text-[#9c9a92] block mb-1">부대조건</span>
+                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.icdl_cdtn_cont}</p>
+                </div>
+              )}
+              {item.cltr_etc_cont && (
+                <div className="py-2">
+                  <span className="text-xs text-[#9c9a92] block mb-1">기타사항</span>
+                  <p className="text-xs text-[#5f5e5a] bg-gray-50 border border-[#e8e6df] rounded p-3 whitespace-pre-wrap">{item.cltr_etc_cont}</p>
+                </div>
+              )}
             </div>
           )}
 
           {info && info.sqms.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-semibold text-[#3d3d3a] mb-2">면적 정보</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      {[
-                        { key: "cland_cont", label: "종별(지목)" },
-                        { key: "sqms_cont", label: "면적" },
-                        { key: "purs_alc_cont", label: "지분" },
-                        { key: "dtl_cltr_nm", label: "비고" },
-                      ].map((col) => (
-                        <th key={col.key} className="px-2 py-1.5 text-left text-[#9c9a92] border border-[#e8e6df] font-normal">
-                          {col.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {info.sqms.map((row, i) => {
-                      const val = (key: string) => {
-                        const v = row[key];
-                        if (v == null || v === "") return "-";
-                        if (key === "sqms_cont") {
-                          const n = parseFloat(String(v).replace(/[^0-9.]/g, ""));
-                          if (!isNaN(n)) return `${String(v).trim()} (약 ${(n * 0.3025).toFixed(1)}평)`;
-                        }
-                        return String(v);
-                      };
-                      return (
-                        <tr key={i}>
-                          {["cland_cont", "sqms_cont", "purs_alc_cont", "dtl_cltr_nm"].map((key) => (
-                            <td key={key} className="px-2 py-1.5 border border-[#e8e6df] text-[#3d3d3a]">
-                              {val(key)}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <LabeledTable
+                data={info.sqms}
+                columns={SQMS_COLS}
+              />
             </div>
           )}
         </div>

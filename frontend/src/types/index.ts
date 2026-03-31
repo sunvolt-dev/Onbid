@@ -31,6 +31,12 @@ export interface BidItem {
   collected_at: string;
   detail_fetched_at: string | null;
   bid_fetched_at: string | null;
+  loc_vnty_pscd_cont: string | null;
+  utlz_pscd_cont: string | null;
+  cltr_etc_cont: string | null;
+  icdl_cdtn_cont: string | null;
+  zadr_nm: string | null;
+  cltr_radr: string | null;
 }
 
 export interface Stats {

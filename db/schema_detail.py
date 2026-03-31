@@ -144,5 +144,19 @@ def init_detail_db(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN detail_fetched_at TEXT")
         log.info("마이그레이션: BID_ITEMS.detail_fetched_at 컬럼 추가")
 
+    # 위치 및 이용현황 컬럼 마이그레이션
+    migrate_cols = {
+        "loc_vnty_pscd_cont": "TEXT",   # 위치 및 부근 현황
+        "utlz_pscd_cont":     "TEXT",   # 이용현황
+        "cltr_etc_cont":      "TEXT",   # 기타사항
+        "icdl_cdtn_cont":     "TEXT",   # 부대조건
+        "zadr_nm":             "TEXT",   # 지번주소(전체)
+        "cltr_radr":           "TEXT",   # 도로명주소(전체)
+    }
+    for col, dtype in migrate_cols.items():
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE BID_ITEMS ADD COLUMN {col} {dtype}")
+            log.info(f"마이그레이션: BID_ITEMS.{col} 컬럼 추가")
+
     conn.commit()
     log.info("상세 DB 초기화 완료")

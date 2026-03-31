@@ -347,11 +347,27 @@ def save_detail(conn: sqlite3.Connection, cltr_mng_no: str, item: dict):
     save_crtn_lst   (conn, cltr_mng_no, to_list(item.get("crtnLstClgList")))
     save_paps_inf   (conn, cltr_mng_no, item.get("papsInf"))
 
-    # 상세 조회 완료 시각 기록
-    conn.execute(
-        "UPDATE BID_ITEMS SET detail_fetched_at = ? WHERE cltr_mng_no = ?",
-        (now_str(), cltr_mng_no),
-    )
+    # 위치 및 이용현황 저장
+    conn.execute("""
+        UPDATE BID_ITEMS SET
+            loc_vnty_pscd_cont = ?,
+            utlz_pscd_cont     = ?,
+            cltr_etc_cont      = ?,
+            icdl_cdtn_cont     = ?,
+            zadr_nm            = ?,
+            cltr_radr          = ?,
+            detail_fetched_at  = ?
+        WHERE cltr_mng_no = ?
+    """, (
+        to_str(item.get("locVntyPscdCont")),
+        to_str(item.get("utlzPscdCont")),
+        to_str(item.get("cltrEtcCont")),
+        to_str(item.get("icdlCdtnCont")),
+        to_str(item.get("zadrNm")),
+        to_str(item.get("cltrRadr")),
+        now_str(),
+        cltr_mng_no,
+    ))
     conn.commit()
 
 
