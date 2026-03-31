@@ -139,23 +139,39 @@ export default function TabInfo({ item }: Props) {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-gray-50">
-                      {Object.keys(info.sqms[0]).slice(0, 5).map((k) => (
-                        <th key={k} className="px-2 py-1.5 text-left text-[#9c9a92] border border-[#e8e6df] font-normal">
-                          {k}
+                      {[
+                        { key: "cland_cont", label: "종별(지목)" },
+                        { key: "sqms_cont", label: "면적" },
+                        { key: "purs_alc_cont", label: "지분" },
+                        { key: "dtl_cltr_nm", label: "비고" },
+                      ].map((col) => (
+                        <th key={col.key} className="px-2 py-1.5 text-left text-[#9c9a92] border border-[#e8e6df] font-normal">
+                          {col.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {info.sqms.map((row, i) => (
-                      <tr key={i}>
-                        {Object.values(row).slice(0, 5).map((v, j) => (
-                          <td key={j} className="px-2 py-1.5 border border-[#e8e6df] text-[#3d3d3a]">
-                            {String(v ?? "-")}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
+                    {info.sqms.map((row, i) => {
+                      const val = (key: string) => {
+                        const v = row[key];
+                        if (v == null || v === "") return "-";
+                        if (key === "sqms_cont") {
+                          const n = parseFloat(String(v).replace(/[^0-9.]/g, ""));
+                          if (!isNaN(n)) return `${String(v).trim()} (약 ${(n * 0.3025).toFixed(1)}평)`;
+                        }
+                        return String(v);
+                      };
+                      return (
+                        <tr key={i}>
+                          {["cland_cont", "sqms_cont", "purs_alc_cont", "dtl_cltr_nm"].map((key) => (
+                            <td key={key} className="px-2 py-1.5 border border-[#e8e6df] text-[#3d3d3a]">
+                              {val(key)}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

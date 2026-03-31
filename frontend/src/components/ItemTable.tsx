@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
 import { fmtAmt, dLabel, daysLeft } from "@/utils/format";
 
@@ -32,10 +32,28 @@ function isNewToday(firstCollected: string): boolean {
 
 export default function ItemTable({ items, filter, onSortChange }: Props) {
   const router = useRouter();
-  const [page, setPage] = useState(1);
+  const searchParams = useSearchParams();
+  const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
+  const prevSort = useRef(filter.sort);
 
-  // 아이템 목록이나 정렬 변경 시 1페이지로 리셋
-  useEffect(() => { setPage(1); }, [items, filter.sort]);
+  // page 변경 시 URL 동기화
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPage = Number(params.get("page")) || 1;
+    if (urlPage === page) return;
+    if (page <= 1) params.delete("page");
+    else params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : "/", { scroll: false });
+  }, [page, router]);
+
+  // 정렬 변경 시 1페이지로 리셋
+  useEffect(() => {
+    if (prevSort.current !== filter.sort) {
+      prevSort.current = filter.sort;
+      setPage(1);
+    }
+  }, [filter.sort]);
 
   const totalPages = Math.ceil(items.length / PAGE_SIZE);
   const pageItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import FilterPanel from "@/components/FilterPanel";
 
 import ItemTable from "@/components/ItemTable";
@@ -51,11 +51,13 @@ export default function HomePage() {
             </div>
           </div>
         ) : (
-          <ItemTable
-            items={items}
-            filter={filter}
-            onSortChange={(sort) => setFilter({ ...filter, sort })}
-          />
+          <Suspense>
+            <ItemTable
+              items={items}
+              filter={filter}
+              onSortChange={(sort) => setFilter({ ...filter, sort })}
+            />
+          </Suspense>
         )}
       </main>
     </div>
