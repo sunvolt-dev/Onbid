@@ -5,7 +5,10 @@ import { fetchItems } from "@/api";
 import type { BidItem, FilterState } from "@/types";
 
 const DEFAULT_FILTER: FilterState = {
+  ratio_min: 0,
   ratio_max: 100,
+  price_min: null,
+  price_max: null,
   usbd_min: 0,
   sd_nm: "",
   usg_mcls: "",
@@ -26,7 +29,10 @@ export function useItems() {
     setError(null);
     try {
       const data = await fetchItems({
+        ratio_min: f.ratio_min || undefined,
         ratio_max: f.ratio_max,
+        price_min: f.price_min ?? undefined,
+        price_max: f.price_max ?? undefined,
         usbd_min: f.usbd_min,
         sd_nm: f.sd_nm,
         usg_mcls: f.usg_mcls || undefined,

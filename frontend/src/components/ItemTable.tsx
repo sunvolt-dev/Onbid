@@ -145,7 +145,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-center text-xs text-[#3d3d3a]">
-                    {item.pbct_nsq}회차
+                    {Number(item.pbct_nsq)}회차
                   </td>
                   <td className="px-3 py-2.5 text-center text-xs text-[#3d3d3a]">
                     {item.usbd_nft > 0 ? (

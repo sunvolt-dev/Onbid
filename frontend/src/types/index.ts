@@ -81,7 +81,10 @@ export interface TenantInfo {
 }
 
 export interface FilterState {
+  ratio_min: number;
   ratio_max: number;
+  price_min: number | null;
+  price_max: number | null;
   usbd_min: number;
   sd_nm: string;
   usg_mcls: string;

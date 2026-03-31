@@ -6,9 +6,11 @@ import type { BidItem } from "@/types";
 interface Props {
   item: BidItem;
   onBookmark: () => void;
+  onRefresh: () => void;
+  refreshing?: boolean;
 }
 
-export default function HeroSection({ item, onBookmark }: Props) {
+export default function HeroSection({ item, onBookmark, onRefresh, refreshing }: Props) {
   const dl = daysLeft(item.cltr_bid_end_dt);
   const deadlinePillColor =
     dl < 0 ? "bg-gray-100 text-gray-500" : dl <= 3 ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-700";
@@ -17,16 +19,11 @@ export default function HeroSection({ item, onBookmark }: Props) {
     <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-6">
       <div className="flex gap-6">
         {/* 썸네일 */}
-        <div className="w-52 h-40 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-          {item.thnl_img_url ? (
-            <img
-              src={item.thnl_img_url}
-              alt={item.onbid_cltr_nm}
-              className="object-cover w-full h-full"
-            />
-          ) : (
-            <span className="text-[#9c9a92] text-xs">이미지 없음</span>
-          )}
+        <div className="w-52 h-40 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center text-center">
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="text-3xl">🏢</span>
+            <span className="text-[11px] text-[#9c9a92]">{item.cltr_usg_scls_nm}</span>
+          </div>
         </div>
 
         {/* 정보 */}
@@ -87,7 +84,7 @@ export default function HeroSection({ item, onBookmark }: Props) {
             </div>
             <div className="flex-1 bg-white border border-[#e8e6df] rounded-lg px-3 py-2 text-center">
               <p className="text-[11px] text-[#9c9a92] mb-1">회차</p>
-              <p className="text-lg font-bold text-[#1a1a18]">{item.pbct_nsq}회</p>
+              <p className="text-lg font-bold text-[#1a1a18]">{Number(item.pbct_nsq)}회</p>
             </div>
             <div className="flex-1 bg-white border border-[#e8e6df] rounded-lg px-3 py-2 text-center">
               <p className="text-[11px] text-[#9c9a92] mb-1">유찰 횟수</p>
@@ -98,7 +95,7 @@ export default function HeroSection({ item, onBookmark }: Props) {
           {/* 가격 */}
           <div className="flex items-baseline gap-3">
             <span className="text-sm text-[#9c9a92] line-through">{fmtKRW(item.apsl_evl_amt)}</span>
-            <span className="text-xl font-bold text-[#185fa5]">{fmtAmt(item.lowst_bid_prc)}</span>
+            <span className="text-xl font-bold text-[#185fa5]">{fmtKRW(item.lowst_bid_prc)}</span>
           </div>
 
           {/* 게이지바 */}
@@ -122,6 +119,13 @@ export default function HeroSection({ item, onBookmark }: Props) {
 
         {/* 액션 버튼 */}
         <div className="flex flex-col gap-2 shrink-0">
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors disabled:opacity-50"
+          >
+            {refreshing ? "갱신 중..." : "↻ 새로고침"}
+          </button>
           <button
             onClick={onBookmark}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${

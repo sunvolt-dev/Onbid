@@ -2,7 +2,10 @@ import { API_BASE } from "@/utils/api";
 import type { BidItem, Stats, ItemInfo, BidQual, TenantInfo } from "@/types";
 
 export async function fetchItems(params: {
+  ratio_min?: number;
   ratio_max?: number;
+  price_min?: number;
+  price_max?: number;
   usbd_min?: number;
   sd_nm?: string;
   usg_mcls?: string;
@@ -12,7 +15,10 @@ export async function fetchItems(params: {
   limit?: number;
 }): Promise<BidItem[]> {
   const q = new URLSearchParams();
+  if (params.ratio_min !== undefined) q.set("ratio_min", String(params.ratio_min));
   if (params.ratio_max !== undefined) q.set("ratio_max", String(params.ratio_max));
+  if (params.price_min !== undefined) q.set("price_min", String(params.price_min));
+  if (params.price_max !== undefined) q.set("price_max", String(params.price_max));
   if (params.usbd_min !== undefined && params.usbd_min > 0) q.set("usbd_min", String(params.usbd_min));
   if (params.sd_nm) q.set("sd_nm", params.sd_nm);
   if (params.usg_mcls) q.set("usg_mcls", params.usg_mcls);
@@ -58,5 +64,17 @@ export async function fetchItemTenant(id: string): Promise<TenantInfo> {
 export async function toggleBookmark(id: string): Promise<{ cltr_mng_no: string; is_bookmarked: number }> {
   const res = await fetch(`${API_BASE}/api/items/${id}/bookmark`, { method: "POST" });
   if (!res.ok) throw new Error("bookmark toggle failed");
+  return res.json();
+}
+
+export async function checkItem(id: string): Promise<{ alive: boolean; status: string }> {
+  const res = await fetch(`${API_BASE}/api/items/${id}/check`);
+  if (!res.ok) throw new Error("check failed");
+  return res.json();
+}
+
+export async function refreshItem(id: string): Promise<{ item: BidItem; refreshed: { detail: boolean; bid: boolean } }> {
+  const res = await fetch(`${API_BASE}/api/items/${id}/refresh`, { method: "POST" });
+  if (!res.ok) throw new Error("refresh failed");
   return res.json();
 }

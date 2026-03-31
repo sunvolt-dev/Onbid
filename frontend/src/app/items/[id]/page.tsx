@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchItem, toggleBookmark } from "@/api";
+import { fetchItem, toggleBookmark, refreshItem, checkItem } from "@/api";
 import type { BidItem } from "@/types";
 import { dLabel, daysLeft } from "@/utils/format";
 import HeroSection from "@/components/detail/HeroSection";
@@ -36,10 +36,20 @@ export default function ItemDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
+  const [refreshing, setRefreshing] = useState(false);
+  const [closed, setClosed] = useState(false);
 
   useEffect(() => {
     fetchItem(id)
-      .then(setItem)
+      .then((data) => {
+        setItem(data);
+        // 상세 진입 시 온비드에 아직 유효한지 백그라운드 체크
+        checkItem(id)
+          .then((res) => {
+            if (!res.alive) setClosed(true);
+          })
+          .catch(() => {});
+      })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [id]);
@@ -51,6 +61,19 @@ export default function ItemDetailPage({
       setItem({ ...item, is_bookmarked: res.is_bookmarked });
     } catch {
       // ignore
+    }
+  }
+
+  async function handleRefresh() {
+    if (!item || refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await refreshItem(item.cltr_mng_no);
+      setItem(res.item);
+    } catch {
+      // ignore
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -118,8 +141,19 @@ export default function ItemDetailPage({
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-6 flex flex-col gap-6">
+        {/* 종료 배너 */}
+        {closed && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-3 flex items-center gap-3">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <p className="text-sm font-semibold text-red-700">이 물건은 종료되었습니다</p>
+              <p className="text-xs text-red-500 mt-0.5">온비드에서 낙찰·취소 처리되어 더 이상 입찰할 수 없습니다.</p>
+            </div>
+          </div>
+        )}
+
         {/* Hero */}
-        <HeroSection item={item} onBookmark={handleBookmark} />
+        <HeroSection item={item} onBookmark={handleBookmark} onRefresh={handleRefresh} refreshing={refreshing} />
 
         {/* 탭 */}
         <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl overflow-hidden">
