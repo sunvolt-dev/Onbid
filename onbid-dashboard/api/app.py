@@ -1,6 +1,8 @@
 import os
 import sys
 import sqlite3
+from datetime import date, timedelta
+from collections import defaultdict
 from flask import Flask, jsonify, request, abort
 from flask_cors import CORS
 
@@ -413,6 +415,273 @@ def refresh_item(item_id):
         ).fetchone()
 
         return jsonify({"item": dict(updated), "refreshed": results})
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────
+# GET /api/items/<id>/market-price
+# 탭3 수익성 분석 — 국토부 실거래가 기반 시세 조회
+# ─────────────────────────────────────────
+@app.route("/api/items/<item_id>/market-price")
+def get_market_price(item_id):
+    from molit_fetcher import get_market_price as fetch_market
+    from db.schema_molit import init_molit_db
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.row_factory = sqlite3.Row
+        item = conn.execute(
+            """SELECT cltr_mng_no, lctn_sd_nm, lctn_sggn_nm, lctn_emd_nm,
+                      cltr_usg_scls_nm, bld_sqms, onbid_cltr_nm,
+                      lowst_bid_prc, apsl_evl_amt
+               FROM BID_ITEMS WHERE cltr_mng_no = ?""",
+            (item_id,),
+        ).fetchone()
+
+        if item is None:
+            abort(404)
+
+        init_molit_db(conn)
+
+        result = fetch_market(
+            conn,
+            sd_nm=item["lctn_sd_nm"],
+            sggn_nm=item["lctn_sggn_nm"],
+            emd_nm=item["lctn_emd_nm"],
+            usg_scls=item["cltr_usg_scls_nm"],
+            bld_sqms=item["bld_sqms"],
+            cltr_nm=item["onbid_cltr_nm"],
+        )
+
+        # 시세 vs 입찰가 비교 추가
+        if result.get("status") == "ok" and result.get("summary"):
+            est = result["summary"].get("estimated_market_price_won")
+            bid = item["lowst_bid_prc"]
+            if est and bid:
+                result["comparison"] = {
+                    "market_vs_bid_pct": round(bid / est * 100, 1),
+                    "discount_from_market_pct": round((1 - bid / est) * 100, 1),
+                }
+
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────
+# 투자 스코어링
+# ─────────────────────────────────────────
+LOCATION_PREMIUM = {
+    "서울특별시 강남구": 100, "서울특별시 서초구": 100, "서울특별시 송파구": 95,
+    "서울특별시 마포구": 90, "서울특별시 영등포구": 90, "서울특별시 용산구": 90,
+    "서울특별시 성동구": 85, "서울특별시 광진구": 85, "서울특별시 종로구": 85,
+    "서울특별시": 80,
+    "경기도 성남시": 85, "경기도 과천시": 85, "경기도 하남시": 80,
+    "경기도 수원시": 75, "경기도 용인시": 75, "경기도 화성시": 70,
+    "경기도": 65,
+    "인천광역시": 60, "부산광역시": 60, "대구광역시": 55, "광주광역시": 55,
+    "대전광역시": 55, "울산광역시": 50, "세종특별자치시": 50,
+}
+
+
+def get_location_score(sd_nm: str, sggn_nm: str) -> float:
+    specific = f"{sd_nm} {sggn_nm}" if sggn_nm else sd_nm
+    if specific in LOCATION_PREMIUM:
+        return LOCATION_PREMIUM[specific]
+    if sd_nm in LOCATION_PREMIUM:
+        return LOCATION_PREMIUM[sd_nm]
+    return 30
+
+
+def compute_scores(items: list, w_ratio=0.4, w_fail=0.3, w_location=0.3) -> list:
+    ratios = [it["ratio_pct"] for it in items if it["ratio_pct"] is not None]
+    if not ratios:
+        return items
+    ratio_min = min(ratios)
+    ratio_max = max(ratios)
+    ratio_range = ratio_max - ratio_min if ratio_max != ratio_min else 1
+
+    for it in items:
+        r = it.get("ratio_pct")
+        ratio_score = 100 * (1 - (r - ratio_min) / ratio_range) if r is not None else 0
+        fail_score = min((it.get("usbd_nft", 0) or 0) / 5, 1.0) * 100
+        loc_score = get_location_score(it.get("lctn_sd_nm", ""), it.get("lctn_sggn_nm", ""))
+
+        total = w_ratio * ratio_score + w_fail * fail_score + w_location * loc_score
+        it["score"] = round(total, 1)
+        it["score_breakdown"] = {
+            "ratio": round(w_ratio * ratio_score, 1),
+            "fail": round(w_fail * fail_score, 1),
+            "location": round(w_location * loc_score, 1),
+        }
+
+    return sorted(items, key=lambda x: x["score"], reverse=True)
+
+
+# ─────────────────────────────────────────
+# GET /api/analytics/summary
+# 홈페이지 요약 스트립용 집계 데이터
+# ─────────────────────────────────────────
+@app.route("/api/analytics/summary")
+def analytics_summary():
+    conn = get_db()
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM BID_ITEMS WHERE status = 'active'"
+        ).fetchone()[0]
+
+        by_region = conn.execute("""
+            SELECT lctn_sd_nm AS region, COUNT(*) AS count,
+                   ROUND(AVG(ratio_pct), 1) AS avg_ratio
+            FROM BID_ITEMS WHERE status = 'active' AND lctn_sd_nm IS NOT NULL
+            GROUP BY lctn_sd_nm ORDER BY count DESC
+        """).fetchall()
+
+        by_usage = conn.execute("""
+            SELECT cltr_usg_mcls_nm AS usage_type, COUNT(*) AS count,
+                   ROUND(AVG(ratio_pct), 1) AS avg_ratio
+            FROM BID_ITEMS WHERE status = 'active' AND cltr_usg_mcls_nm IS NOT NULL
+            GROUP BY cltr_usg_mcls_nm ORDER BY count DESC
+        """).fetchall()
+
+        ratio_dist = conn.execute("""
+            SELECT
+                CAST(CAST(ratio_pct / 10 AS INTEGER) * 10 AS TEXT) || '-' ||
+                CAST(CAST(ratio_pct / 10 AS INTEGER) * 10 + 10 AS TEXT) || '%' AS bucket,
+                COUNT(*) AS count
+            FROM BID_ITEMS WHERE status = 'active' AND ratio_pct IS NOT NULL
+            GROUP BY CAST(ratio_pct / 10 AS INTEGER)
+            ORDER BY CAST(ratio_pct / 10 AS INTEGER)
+        """).fetchall()
+
+        top_rows = conn.execute("""
+            SELECT cltr_mng_no, onbid_cltr_nm, ratio_pct, usbd_nft,
+                   lctn_sd_nm, lctn_sggn_nm
+            FROM BID_ITEMS WHERE status = 'active' AND ratio_pct IS NOT NULL
+        """).fetchall()
+        top_items = compute_scores([dict(r) for r in top_rows])[:5]
+
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        yesterday_total = conn.execute(
+            "SELECT SUM(total_count) FROM DAILY_SNAPSHOT WHERE snapshot_date = ?",
+            (yesterday,),
+        ).fetchone()[0]
+
+        return jsonify({
+            "total_items": total,
+            "total_delta": total - yesterday_total if yesterday_total else None,
+            "by_region": [dict(r) for r in by_region],
+            "by_usage_type": [dict(r) for r in by_usage],
+            "ratio_distribution": [dict(r) for r in ratio_dist],
+            "top_scored": [{
+                "cltr_mng_no": it["cltr_mng_no"],
+                "name": it["onbid_cltr_nm"],
+                "score": it["score"],
+                "ratio_pct": it["ratio_pct"],
+                "region": it["lctn_sd_nm"],
+            } for it in top_items],
+        })
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────
+# GET /api/analytics/trends?period=30d
+# 트렌드 차트용 스냅샷 데이터
+# ─────────────────────────────────────────
+@app.route("/api/analytics/trends")
+def analytics_trends():
+    period = request.args.get("period", "30d")
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+
+    conn = get_db()
+    try:
+        start_date = (date.today() - timedelta(days=days)).isoformat()
+
+        rows = conn.execute("""
+            SELECT snapshot_date, region, usage_type, total_count,
+                   avg_ratio_pct, min_ratio_pct, fail_count_avg
+            FROM DAILY_SNAPSHOT
+            WHERE snapshot_date >= ?
+            ORDER BY snapshot_date
+        """, (start_date,)).fetchall()
+
+        by_date = defaultdict(lambda: {"total_count": 0, "ratio_sum": 0, "ratio_n": 0, "by_region": []})
+        for r in rows:
+            d = dict(r)
+            entry = by_date[d["snapshot_date"]]
+            entry["total_count"] += d["total_count"]
+            if d["avg_ratio_pct"] is not None:
+                entry["ratio_sum"] += d["avg_ratio_pct"] * d["total_count"]
+                entry["ratio_n"] += d["total_count"]
+            entry["by_region"].append({
+                "region": d["region"],
+                "usage_type": d["usage_type"],
+                "count": d["total_count"],
+                "avg_ratio": d["avg_ratio_pct"],
+            })
+
+        data = []
+        for dt in sorted(by_date.keys()):
+            entry = by_date[dt]
+            avg_ratio = round(entry["ratio_sum"] / entry["ratio_n"], 1) if entry["ratio_n"] > 0 else None
+            data.append({
+                "date": dt,
+                "total_count": entry["total_count"],
+                "avg_ratio": avg_ratio,
+                "by_region": entry["by_region"],
+            })
+
+        return jsonify({"period": period, "data": data})
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────
+# GET /api/analytics/scores
+# 투자 스코어보드
+# ─────────────────────────────────────────
+@app.route("/api/analytics/scores")
+def analytics_scores():
+    w_ratio = float(request.args.get("w_ratio", 0.4))
+    w_fail = float(request.args.get("w_fail", 0.3))
+    w_location = float(request.args.get("w_location", 0.3))
+    limit = int(request.args.get("limit", 50))
+
+    conn = get_db()
+    try:
+        rows = conn.execute("""
+            SELECT cltr_mng_no, onbid_cltr_nm, lctn_sd_nm, lctn_sggn_nm,
+                   cltr_usg_mcls_nm, ratio_pct, usbd_nft, lowst_bid_prc,
+                   apsl_evl_amt, cltr_bid_end_dt
+            FROM BID_ITEMS
+            WHERE status = 'active' AND ratio_pct IS NOT NULL
+        """).fetchall()
+
+        items = compute_scores([dict(r) for r in rows], w_ratio, w_fail, w_location)
+
+        ratios = [it["ratio_pct"] for it in items if it["ratio_pct"] is not None]
+        return jsonify({
+            "weights": {"ratio": w_ratio, "fail": w_fail, "location": w_location},
+            "normalization": {
+                "ratio_min": min(ratios) if ratios else None,
+                "ratio_max": max(ratios) if ratios else None,
+            },
+            "items": [{
+                "cltr_mng_no": it["cltr_mng_no"],
+                "name": it["onbid_cltr_nm"],
+                "region": f"{it['lctn_sd_nm']} {it.get('lctn_sggn_nm', '')}".strip(),
+                "usage_type": it.get("cltr_usg_mcls_nm", ""),
+                "ratio_pct": it["ratio_pct"],
+                "fail_count": it.get("usbd_nft", 0),
+                "lowst_bid_prc": it.get("lowst_bid_prc"),
+                "apsl_evl_amt": it.get("apsl_evl_amt"),
+                "cltr_bid_end_dt": it.get("cltr_bid_end_dt"),
+                "score": it["score"],
+                "score_breakdown": it["score_breakdown"],
+            } for it in items[:limit]],
+        })
     finally:
         conn.close()
 
