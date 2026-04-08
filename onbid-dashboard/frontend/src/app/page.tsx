@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import FilterPanel from "@/components/FilterPanel";
-
+import SummaryStrip from "@/components/SummaryStrip";
 import ItemTable from "@/components/ItemTable";
 import { useItems } from "@/hooks/useItems";
 
@@ -34,6 +34,7 @@ export default function HomePage() {
           </div>
         </div>
 
+        <SummaryStrip />
 
         {/* 에러 */}
         {error && (
