@@ -73,12 +73,12 @@ export default function TrendCharts({
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11 }}
-                  tickFormatter={(d: string) => d.slice(5)}
+                  tickFormatter={(d) => String(d).slice(5)}
                 />
                 <YAxis />
                 <Tooltip
-                  labelFormatter={(d: string) => d}
-                  formatter={(value: number) => [`${value}건`, "물건 수"]}
+                  labelFormatter={(d) => String(d)}
+                  formatter={(value) => [`${value}건`, "물건 수"]}
                 />
                 <Line
                   type="monotone"
@@ -100,12 +100,12 @@ export default function TrendCharts({
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11 }}
-                  tickFormatter={(d: string) => d.slice(5)}
+                  tickFormatter={(d) => String(d).slice(5)}
                 />
                 <YAxis domain={["auto", "auto"]} unit="%" />
                 <Tooltip
-                  labelFormatter={(d: string) => d}
-                  formatter={(value: number) => [
+                  labelFormatter={(d) => String(d)}
+                  formatter={(value) => [
                     `${value}%`,
                     "평균 감정가율",
                   ]}

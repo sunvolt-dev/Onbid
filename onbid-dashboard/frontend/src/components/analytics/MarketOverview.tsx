@@ -11,6 +11,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import type { PieLabelRenderProps } from "recharts";
 import type { AnalyticsSummary } from "@/types/analytics";
 
 const COLORS = [
@@ -53,7 +54,7 @@ export default function MarketOverview({ data }: Props) {
                 tick={{ fontSize: 12 }}
               />
               <Tooltip
-                formatter={(value: number) => [`${value}건`, "물건 수"]}
+                formatter={(value) => [`${value}건`, "물건 수"]}
               />
               <Bar dataKey="count" fill="#185fa5" radius={[0, 4, 4, 0]} />
             </BarChart>
@@ -68,7 +69,7 @@ export default function MarketOverview({ data }: Props) {
               <XAxis dataKey="bucket" tick={{ fontSize: 11 }} />
               <YAxis />
               <Tooltip
-                formatter={(value: number) => [`${value}건`, "물건 수"]}
+                formatter={(value) => [`${value}건`, "물건 수"]}
               />
               <Bar dataKey="count" fill="#2e86de" radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -88,13 +89,11 @@ export default function MarketOverview({ data }: Props) {
                 cy="50%"
                 innerRadius={50}
                 outerRadius={90}
-                label={({
-                  usage_type,
-                  percent,
-                }: {
-                  usage_type: string;
-                  percent: number;
-                }) => `${usage_type} ${(percent * 100).toFixed(0)}%`}
+                label={(props: PieLabelRenderProps) => {
+                  const name = (props as PieLabelRenderProps & { usage_type?: string }).usage_type ?? "";
+                  const pct = typeof props.percent === "number" ? props.percent : 0;
+                  return `${name} ${(pct * 100).toFixed(0)}%`;
+                }}
                 labelLine={false}
               >
                 {data.by_usage_type.map((_, i) => (
@@ -102,7 +101,7 @@ export default function MarketOverview({ data }: Props) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number, name: string) => [
+                formatter={(value, name) => [
                   `${value}건`,
                   name,
                 ]}
