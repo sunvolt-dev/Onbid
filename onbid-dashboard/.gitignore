@@ -20,3 +20,5 @@ collector/*.log
 .docs/
 docs/
 
+*.log
+

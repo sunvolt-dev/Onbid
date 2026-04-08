@@ -1,26 +1,21 @@
 import os
+import sys
 import sqlite3
 import requests
 import logging
 from datetime import datetime
-from enum import Enum
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+# 프로젝트 루트를 sys.path에 추가 (db, processor, notifier 패키지 import용)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# 알림 종류: 감정가 비율 조건 / 마감 임박 / 수의계약 전환
-class AlertType(str, Enum):
-    RATIO    = "ratio"     # 감정가 대비 비율 조건 충족
-    DEADLINE = "deadline"  # 마감 3일 이내
-    PVCT     = "pvct"      # 수의계약 전환
-
-
-# 알림 발송 결과 상태
-class AlertStatus(str, Enum):
-    SUCCESS = "success"    # 이메일 발송 성공
-    FAIL    = "fail"       # 발송 실패 (네트워크 오류 등)
-    SKIP    = "skip"       # 이미 보낸 물건이라 건너뜀
+from utils import to_int, to_float
+from db.schema_items import init_db
+from processor.calc import calc_ratio
+from processor.status import mark_closed
+from processor.query import query_items
 
 # ─────────────────────────────────────────
 # 설정
@@ -79,89 +74,6 @@ log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────
-# DB 초기화
-# ─────────────────────────────────────────
-def init_db(conn: sqlite3.Connection):
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS BID_ITEMS (
-            cltr_mng_no         TEXT        PRIMARY KEY,   -- 물건관리번호 (고유 식별자)
-            pbct_cdtn_no        INTEGER,                   -- 공매조건번호 (상세 API 호출 시 cltr_mng_no와 함께 필수)
-            onbid_cltr_nm       TEXT,                      -- 물건명
-            prpt_div_nm         TEXT,                      -- 재산유형 (예: 기타일반재산)
-            cltr_usg_mcls_nm    TEXT,                      -- 용도 중분류 (예: 상가용및업무용건물)
-            cltr_usg_scls_nm    TEXT,                      -- 용도 소분류 (예: 업무시설)
-            lctn_sd_nm          TEXT,                      -- 소재지 시도
-            lctn_sggn_nm        TEXT,                      -- 소재지 시군구
-            lctn_emd_nm         TEXT,                      -- 소재지 읍면동
-            land_sqms           REAL,                      -- 토지면적 (㎡)
-            bld_sqms            REAL,                      -- 건물면적 (㎡)
-            apsl_evl_amt        INTEGER,                   -- 감정평가금액 (원)
-            lowst_bid_prc       INTEGER,                   -- 현재 회차 최저입찰가 (원)
-            ratio_pct           REAL,                      -- 감정가 대비 최저입찰가 비율 (%)
-            frst_ratio_pct      REAL,                      -- 최초 최저입찰가 대비 현재 비율 (%) - 하락폭 파악용
-            usbd_nft            INTEGER,                   -- 유찰 횟수
-            pbct_nsq            TEXT,                      -- 현재 공매 회차
-            pvct_trgt_yn        TEXT,                      -- 수의계약 대상 여부 (Y/N)
-            batc_bid_yn         TEXT,                      -- 일괄입찰 여부 (Y: 여러 물건 묶음)
-            alc_yn              TEXT,                      -- 지분물건 여부 (Y: 일부 지분만 매각)
-            crtn_yn             TEXT,                      -- 정정 이력 여부 (Y: 상세 조회 시 정정내역 확인 권장)
-            rqst_org_nm         TEXT,                      -- 공고기관명
-            exct_org_nm         TEXT,                      -- 집행기관명
-            cltr_bid_bgng_dt    TEXT,                      -- 입찰 시작일시 (YYYY-MM-DD HH:MM)
-            cltr_bid_end_dt     TEXT,                      -- 입찰 마감일시 (YYYY-MM-DD HH:MM)
-            thnl_img_url        TEXT,                      -- 썸네일 이미지 URL
-            status              TEXT        DEFAULT 'active',              -- 물건 상태 (active: 진행중 / closed: 낙찰·취소로 API에서 사라짐)
-            is_bookmarked       INTEGER     DEFAULT 0,                     -- 관심목록 등록 여부 (0: 미등록 / 1: 등록). 수집과 무관하게 사용자가 직접 설정
-            first_collected_at  TEXT,                                      -- 최초 수집 일시 (INSERT 시에만 기록, 이후 변경 없음)
-            collected_at        TEXT        DEFAULT (datetime('now', 'localtime'))  -- 마지막 수집 일시 (매 수집마다 갱신)
-        );
-
-        -- 대시보드 필터 쿼리 성능을 위한 인덱스
-        CREATE INDEX IF NOT EXISTS idx_ratio     ON BID_ITEMS (ratio_pct);       -- 감정가 비율 필터
-        CREATE INDEX IF NOT EXISTS idx_end_dt    ON BID_ITEMS (cltr_bid_end_dt); -- 마감일 정렬/필터
-        CREATE INDEX IF NOT EXISTS idx_region    ON BID_ITEMS (lctn_sd_nm, lctn_sggn_nm); -- 지역 필터
-        CREATE INDEX IF NOT EXISTS idx_usbd      ON BID_ITEMS (usbd_nft);        -- 유찰 횟수 필터
-
-        -- 수집 실행 이력 (그룹별 성공/실패, 신규/변경 건수 기록)
-        CREATE TABLE IF NOT EXISTS COLLECTION_LOG (
-            id              INTEGER     PRIMARY KEY AUTOINCREMENT,
-            run_at          TEXT        DEFAULT (datetime('now', 'localtime')),
-            query_label     TEXT,       -- 수집 그룹 레이블
-            total_count     INTEGER,    -- 수집된 전체 건수
-            new_count       INTEGER,    -- 신규 저장 건수
-            updated_count   INTEGER,    -- 기존 업데이트 건수
-            status          TEXT,       -- 'success' / 'fail'
-            error_msg       TEXT        -- 실패 시 오류 메시지
-        );
-
-        -- 알림 발송 이력 (중복 발송 방지 및 발송 상태 추적)
-        CREATE TABLE IF NOT EXISTS ALERT_LOG (
-            id                  INTEGER     PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no         TEXT        REFERENCES BID_ITEMS(cltr_mng_no),
-            triggered_ratio     REAL,       -- 알림을 트리거한 시점의 비율값
-            alert_type          TEXT,       -- AlertType: ratio / deadline / pvct
-            sent_at             TEXT        DEFAULT (datetime('now', 'localtime')),
-            status              TEXT        -- AlertStatus: success / fail / skip
-        );
-    """)
-
-    # 기존 DB 마이그레이션: 신규 컬럼이 없으면 추가 (스키마 변경 시 DB 재생성 없이 적용)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(BID_ITEMS)")}
-    if "status" not in existing_cols:
-        conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN status TEXT DEFAULT 'active'")
-        log.info("마이그레이션: status 컬럼 추가")
-    if "first_collected_at" not in existing_cols:
-        conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN first_collected_at TEXT")
-        log.info("마이그레이션: first_collected_at 컬럼 추가")
-    if "is_bookmarked" not in existing_cols:
-        conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN is_bookmarked INTEGER DEFAULT 0")
-        log.info("마이그레이션: is_bookmarked 컬럼 추가")
-
-    conn.commit()
-    log.info("DB 초기화 완료")
-
-
-# ─────────────────────────────────────────
 # 유틸
 # ─────────────────────────────────────────
 def format_dt(dt_str: str) -> str:
@@ -180,43 +92,6 @@ def parse_dt(dt_str: str) -> str | None:
         return None
     try:
         return f"{dt_str[0:4]}-{dt_str[4:6]}-{dt_str[6:8]} {dt_str[8:10]}:{dt_str[10:12]}"
-    except Exception:
-        return None
-
-
-def calc_ratio(item: dict) -> float | None:
-    """감정가 대비 최저입찰가 비율(%) 계산.
-    API가 apslPrcCtrsLowstBidRto를 직접 제공하면 그 값을 사용하고,
-    없으면 apslEvlAmt / lowstBidPrcIndctCont로 직접 계산.
-    """
-    ratio = item.get("apslPrcCtrsLowstBidRto")
-    if ratio is not None:
-        try:
-            return round(float(ratio), 2)
-        except Exception:
-            pass
-    try:
-        apsl = float(item.get("apslEvlAmt") or 0)
-        lowst = float(item.get("lowstBidPrcIndctCont") or 0)
-        if apsl > 0 and lowst > 0:
-            return round(lowst / apsl * 100, 2)
-    except Exception:
-        pass
-    return None
-
-
-def to_int(value) -> int | None:
-    """API 문자열 값을 int로 변환. 변환 불가 시 None."""
-    try:
-        return int(float(value)) if value else None
-    except Exception:
-        return None
-
-
-def to_float(value) -> float | None:
-    """API 문자열 값을 float으로 변환. 변환 불가 시 None."""
-    try:
-        return float(value) if value else None
     except Exception:
         return None
 
@@ -409,128 +284,53 @@ def save_log(
 
 
 # ─────────────────────────────────────────
-# 온비드 상세페이지 URL 조합
-# ─────────────────────────────────────────
-def get_onbid_url(cltr_mng_no: str) -> str:
-    """물건관리번호로 온비드 상세 페이지 URL 생성. DB에 저장하지 않고 조회 시 동적으로 생성."""
-    return (
-        f"https://www.onbid.co.kr/op/cta/cltrdtl/retrieveCltrDetail.do"
-        f"?cltrMngNo={cltr_mng_no}"
-    )
-
-
-# ─────────────────────────────────────────
-# 조회 헬퍼 (대시보드에서 활용)
-# ─────────────────────────────────────────
-def query_items(
-    conn: sqlite3.Connection,
-    ratio_max: float = 100.0,   # 감정가 대비 비율 상한 (%)
-    usbd_min: int = 0,          # 최소 유찰 횟수
-    sd_nm: str = None,          # 시도명 필터 (None이면 전체)
-    limit: int = 100,
-) -> list[dict]:
-    """대시보드용 물건 조회. active 상태인 물건만 반환.
-    is_new는 오늘 날짜와 collected_at을 비교해 계산 (별도 컬럼 없음).
-    """
-    sql = """
-        SELECT
-            cltr_mng_no, onbid_cltr_nm,
-            lctn_sd_nm, lctn_sggn_nm, lctn_emd_nm,
-            apsl_evl_amt, lowst_bid_prc, ratio_pct,
-            usbd_nft, pbct_nsq,
-            pvct_trgt_yn, batc_bid_yn, alc_yn,
-            cltr_bid_end_dt, thnl_img_url, pbct_cdtn_no,
-            (DATE(collected_at) = DATE('now', 'localtime')) AS is_new  -- 오늘 수집된 신규 물건 여부
-        FROM BID_ITEMS
-        WHERE status    = 'active'   -- 낙찰/취소된 물건 제외
-          AND ratio_pct <= ?
-          AND usbd_nft  >= ?
-    """
-    params = [ratio_max, usbd_min]
-
-    if sd_nm:
-        sql += " AND lctn_sd_nm = ?"
-        params.append(sd_nm)
-
-    sql += " ORDER BY ratio_pct ASC LIMIT ?"
-    params.append(limit)
-
-    cursor = conn.execute(sql, params)
-    cols = [d[0] for d in cursor.description]
-    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
-
-    # 온비드 URL 동적 조합 (DB 저장 없이 런타임 생성)
-    for row in rows:
-        row["onbid_url"] = get_onbid_url(row["cltr_mng_no"])
-
-    return rows
-
-
-# ─────────────────────────────────────────
-# 종료 물건 감지
-# ─────────────────────────────────────────
-def mark_closed(conn: sqlite3.Connection, collected_ids: set) -> int:
-    """이번 수집에 나타나지 않은 active 물건을 closed로 마킹.
-    낙찰되거나 취소된 물건은 API 응답에서 빠지므로 collected_ids에 없으면 종료로 간주.
-    물건 자체는 삭제하지 않고 status만 변경해 이력 보존.
-    """
-    if not collected_ids:
-        return 0
-    placeholders = ",".join("?" * len(collected_ids))
-    cursor = conn.execute(
-        f"UPDATE BID_ITEMS SET status='closed' WHERE status='active' AND cltr_mng_no NOT IN ({placeholders})",
-        list(collected_ids),
-    )
-    conn.commit()
-    return cursor.rowcount
-
-
-# ─────────────────────────────────────────
 # 메인 실행
 # ─────────────────────────────────────────
 def main():
     conn = sqlite3.connect(DB_PATH)
-    init_db(conn)
+    try:
+        init_db(conn)
 
-    all_collected_ids: set = set()  # 전체 그룹에서 수집된 물건번호 합산
+        all_collected_ids: set = set()  # 전체 그룹에서 수집된 물건번호 합산
 
-    for group in QUERY_GROUPS:
-        label  = group["label"]
-        mclass = group["cltrUsgMclsCtgrNm"]
-        sclass = group["cltrUsgSclsCtgrNm"]
+        for group in QUERY_GROUPS:
+            label  = group["label"]
+            mclass = group["cltrUsgMclsCtgrNm"]
+            sclass = group["cltrUsgSclsCtgrNm"]
 
-        log.info(f"{'='*50}")
-        log.info(f"[{label}] 수집 시작")
+            log.info(f"{'='*50}")
+            log.info(f"[{label}] 수집 시작")
 
-        try:
-            items = fetch_pages(mclass, sclass, label)
-            new_cnt, upd_cnt, ids = upsert_items(conn, items)
-            all_collected_ids |= ids  # 그룹별 수집 ID를 전체 셋에 합산
-            save_log(conn, label, len(items), new_cnt, upd_cnt, "success")
-            log.info(f"[{label}] 완료 → 전체 {len(items)}건 / 신규 {new_cnt}건 / 변경 {upd_cnt}건")
+            try:
+                items = fetch_pages(mclass, sclass, label)
+                new_cnt, upd_cnt, ids = upsert_items(conn, items)
+                all_collected_ids |= ids  # 그룹별 수집 ID를 전체 셋에 합산
+                save_log(conn, label, len(items), new_cnt, upd_cnt, "success")
+                log.info(f"[{label}] 완료 → 전체 {len(items)}건 / 신규 {new_cnt}건 / 변경 {upd_cnt}건")
 
-        except Exception as e:
-            save_log(conn, label, 0, 0, 0, "fail", str(e))
-            log.error(f"[{label}] 실패: {e}")
+            except Exception as e:
+                save_log(conn, label, 0, 0, 0, "fail", str(e))
+                log.error(f"[{label}] 실패: {e}")
 
-    # 모든 그룹 수집 완료 후 사라진 물건 closed 처리
-    closed_cnt = mark_closed(conn, all_collected_ids)
-    if closed_cnt:
-        log.info(f"[종료 감지] {closed_cnt}건 → status=closed (낙찰/취소 추정)")
+        # 모든 그룹 수집 완료 후 사라진 물건 closed 처리
+        closed_cnt = mark_closed(conn, all_collected_ids)
+        if closed_cnt:
+            log.info(f"[종료 감지] {closed_cnt}건 → status=closed (낙찰/취소 추정)")
 
-    # 수집 결과 확인 (감정가 대비 75% 이하, 유찰 1회 이상)
-    log.info("\n[결과 미리보기 - 감정가 75% 이하 / 유찰 1회 이상]")
-    results = query_items(conn, ratio_max=75.0, usbd_min=1, limit=10)
-    for r in results:
-        log.info(
-            f"  {r['cltr_mng_no']} | {r['lctn_sd_nm']} {r['lctn_sggn_nm']} | "
-            f"감정가비율 {r['ratio_pct']}% | 유찰 {r['usbd_nft']}회 | "
-            f"{'[신규]' if r['is_new'] else ''} "
-            f"URL: {r['onbid_url']}"
-        )
+        # 수집 결과 확인 (감정가 대비 75% 이하, 유찰 1회 이상)
+        log.info("\n[결과 미리보기 - 감정가 75% 이하 / 유찰 1회 이상]")
+        results = query_items(conn, ratio_max=75.0, usbd_min=1, limit=10)
+        for r in results:
+            log.info(
+                f"  {r['cltr_mng_no']} | {r['lctn_sd_nm']} {r['lctn_sggn_nm']} | "
+                f"감정가비율 {r['ratio_pct']}% | 유찰 {r['usbd_nft']}회 | "
+                f"{'[신규]' if r['is_new'] else ''} "
+                f"URL: {r['onbid_url']}"
+            )
 
-    conn.close()
-    log.info("수집 완료")
+        log.info("수집 완료")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
