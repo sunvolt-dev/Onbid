@@ -23,13 +23,14 @@ import sqlite3
 import subprocess
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, date
 
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
 DB_PATH     = "onbid.db"
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+CRON_LOG    = os.path.join(SCRIPTS_DIR, "cron_history.log")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,16 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+
+
+def write_cron_log(status: str, detail: str = ""):
+    """cron 실행 이력을 한 줄씩 기록한다."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{ts} | {status}"
+    if detail:
+        line += f" | {detail}"
+    with open(CRON_LOG, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 
 def run_step(script_name: str) -> bool:
@@ -89,28 +100,100 @@ def check_step1_success() -> bool:
     return True
 
 
+def write_daily_snapshot():
+    """활성 BID_ITEMS를 (지역, 용도)별로 집계하여 DAILY_SNAPSHOT에 UPSERT."""
+    log.info("일일 스냅샷 기록 시작")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        today = date.today().isoformat()
+
+        rows = conn.execute("""
+            SELECT
+                lctn_sd_nm AS region,
+                cltr_usg_mcls_nm AS usage_type,
+                COUNT(*) AS total_count,
+                AVG(ratio_pct) AS avg_ratio_pct,
+                MIN(ratio_pct) AS min_ratio_pct,
+                AVG(apsl_evl_amt) AS avg_apsl_unt_prc,
+                AVG(lowst_bid_prc) AS avg_min_bid,
+                AVG(usbd_nft) AS fail_count_avg
+            FROM BID_ITEMS
+            WHERE status = 'active'
+              AND lctn_sd_nm IS NOT NULL
+              AND cltr_usg_mcls_nm IS NOT NULL
+            GROUP BY lctn_sd_nm, cltr_usg_mcls_nm
+        """).fetchall()
+
+        for row in rows:
+            conn.execute("""
+                INSERT INTO DAILY_SNAPSHOT
+                    (snapshot_date, region, usage_type, total_count,
+                     avg_ratio_pct, min_ratio_pct, avg_apsl_unt_prc,
+                     avg_min_bid, fail_count_avg)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(snapshot_date, region, usage_type)
+                DO UPDATE SET
+                    total_count = excluded.total_count,
+                    avg_ratio_pct = excluded.avg_ratio_pct,
+                    min_ratio_pct = excluded.min_ratio_pct,
+                    avg_apsl_unt_prc = excluded.avg_apsl_unt_prc,
+                    avg_min_bid = excluded.avg_min_bid,
+                    fail_count_avg = excluded.fail_count_avg,
+                    created_at = datetime('now', 'localtime')
+            """, (today, row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+
+        conn.commit()
+        log.info(f"일일 스냅샷 기록 완료: {len(rows)}개 그룹")
+
+        conn.execute("""
+            INSERT INTO COLLECTION_LOG (query_label, total_count, new_count, updated_count, status)
+            VALUES ('daily_snapshot', ?, ?, 0, 'success')
+        """, (len(rows), len(rows)))
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        log.error(f"스냅샷 기록 실패: {e}")
+
+
 def main():
+    started_at = datetime.now()
+    write_cron_log("STARTED")
     log.info("=" * 55)
     log.info("온비드 수집 파이프라인 시작")
     log.info("=" * 55)
 
-    # 1단계: 목록 수집
-    run_step("onbid_list_collector.py")
+    try:
+        # 1단계: 목록 수집
+        run_step("onbid_list_collector.py")
 
-    # 1단계 성공 여부 검증 — 실패 시 중단
-    if not check_step1_success():
-        log.error("파이프라인 중단")
+        # 1단계 성공 여부 검증 — 실패 시 중단
+        if not check_step1_success():
+            log.error("파이프라인 중단")
+            elapsed = datetime.now() - started_at
+            write_cron_log("FAILED", f"1단계 검증 실패 | 소요 {elapsed}")
+            sys.exit(1)
+
+        # 2단계: 물건 상세 수집
+        run_step("onbid_detail_collector.py")
+
+        # 3단계: 입찰정보 수집
+        run_step("onbid_bid_collector.py")
+
+        # 일일 스냅샷 기록 (분석 트렌드용)
+        write_daily_snapshot()
+
+        elapsed = datetime.now() - started_at
+        write_cron_log("SUCCESS", f"소요 {elapsed}")
+        log.info("=" * 55)
+        log.info("온비드 수집 파이프라인 완료")
+        log.info("=" * 55)
+
+    except Exception as e:
+        elapsed = datetime.now() - started_at
+        write_cron_log("ERROR", f"{e} | 소요 {elapsed}")
+        log.exception("파이프라인 예외 발생")
         sys.exit(1)
-
-    # 2단계: 물건 상세 수집
-    run_step("onbid_detail_collector.py")
-
-    # 3단계: 입찰정보 수집
-    run_step("onbid_bid_collector.py")
-
-    log.info("=" * 55)
-    log.info("온비드 수집 파이프라인 완료")
-    log.info("=" * 55)
 
 
 if __name__ == "__main__":
