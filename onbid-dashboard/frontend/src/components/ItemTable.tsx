@@ -109,13 +109,21 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
             )}
             {pageItems.map((item) => {
               const dl = daysLeft(item.cltr_bid_end_dt);
+              const expired = dl < 0 && item.pvct_trgt_yn !== "Y";
+              const pvct = dl < 0 && item.pvct_trgt_yn === "Y";
               const deadlineColor =
                 dl < 0 ? "text-gray-400" : dl <= 3 ? "text-red-600 font-semibold" : "text-[#3d3d3a]";
 
               return (
                 <tr
                   key={item.cltr_mng_no}
-                  className="border-b border-[#e8e6df] cursor-pointer transition-colors bg-white hover:bg-[#faf9f7]"
+                  className={`border-b border-[#e8e6df] cursor-pointer transition-colors ${
+                    expired
+                      ? "bg-gray-50 opacity-40 hover:opacity-60"
+                      : pvct
+                      ? "bg-amber-50 hover:bg-amber-100 border-l-2 border-l-amber-400"
+                      : "bg-white hover:bg-[#faf9f7]"
+                  }`}
                   onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
                 >
                   <td className="px-3 py-2.5">
@@ -175,7 +183,12 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     )}
                   </td>
                   <td className={`px-3 py-2.5 text-center text-xs whitespace-nowrap ${deadlineColor}`}>
-                    {dLabel(item.cltr_bid_end_dt)}
+                    <div>{dLabel(item.cltr_bid_end_dt)}</div>
+                    {pvct && (
+                      <span className="inline-block mt-0.5 text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 font-semibold">
+                        수의계약
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     <button
