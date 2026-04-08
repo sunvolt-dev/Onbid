@@ -68,6 +68,24 @@ def init_db(conn: sqlite3.Connection):
             sent_at             TEXT        DEFAULT (datetime('now', 'localtime')),
             status              TEXT        -- AlertStatus: success / fail / skip
         );
+
+        -- 일일 스냅샷 (분석 트렌드 차트용, 파이프라인 실행 시 집계)
+        CREATE TABLE IF NOT EXISTS DAILY_SNAPSHOT (
+            id                  INTEGER     PRIMARY KEY AUTOINCREMENT,
+            snapshot_date       TEXT        NOT NULL,           -- YYYY-MM-DD
+            region              TEXT        NOT NULL,           -- 시/도
+            usage_type          TEXT        NOT NULL,           -- 용도
+            total_count         INTEGER     NOT NULL DEFAULT 0, -- 활성 물건 수
+            avg_ratio_pct       REAL,                           -- 평균 감정가율
+            min_ratio_pct       REAL,                           -- 최소 감정가율
+            avg_apsl_unt_prc    REAL,                           -- 평균 감정가
+            avg_min_bid         REAL,                           -- 평균 최저입찰가
+            fail_count_avg      REAL,                           -- 평균 유찰횟수
+            created_at          TEXT        DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(snapshot_date, region, usage_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_snapshot_date ON DAILY_SNAPSHOT(snapshot_date);
     """)
 
     # 기존 DB 마이그레이션: 신규 컬럼이 없으면 추가 (스키마 변경 시 DB 재생성 없이 적용)
