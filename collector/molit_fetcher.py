@@ -472,7 +472,8 @@ def _build_result(trades: list[dict], tier: int, label: str,
 def get_market_price(conn: sqlite3.Connection,
                      sd_nm: str, sggn_nm: str, emd_nm: str,
                      usg_scls: str, bld_sqms: float | None,
-                     cltr_nm: str | None) -> dict:
+                     cltr_nm: str | None,
+                     zadr_nm: str | None = None) -> dict:
     """온비드 물건 정보로 시세를 조회한다.
 
     Args:
@@ -501,6 +502,7 @@ def get_market_price(conn: sqlite3.Connection,
     #    온비드 분류에 맞는 API 먼저 → 매칭 성공하면 나머지 스킵
     months = get_deal_months()
     bldg_name = extract_building_name(cltr_nm)
+    jibun = extract_jibun(cltr_nm, zadr_nm)
 
     primary_types = USG_TO_PRIMARY.get(usg_scls, ["officetel", "commercial"])
     secondary_types = [t for t in ALL_API_TYPES if t not in primary_types]
@@ -515,9 +517,9 @@ def get_market_price(conn: sqlite3.Connection,
                 time.sleep(SLEEP_SEC)
 
     # 3b) 우선 API 결과로 매칭 시도
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms, jibun)
 
-    if result["status"] == "ok" and result.get("match_tier") in (1, 2):
+    if result["status"] == "ok" and result.get("match_tier") in (0, 1, 2):
         log.info(f"우선 API {api_called}콜로 Tier {result['match_tier']} 매칭 ({lawd_cd})")
         return result
 
@@ -533,7 +535,7 @@ def get_market_price(conn: sqlite3.Connection,
         log.info(f"전체 API {api_called}콜 사용 ({lawd_cd})")
 
     # 3d) 전체 캐시로 재매칭
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms, jibun)
 
     return result
 
