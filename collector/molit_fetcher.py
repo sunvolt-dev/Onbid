@@ -341,7 +341,8 @@ def _jibun_match(a: str | None, b: str | None) -> bool:
 
 def match_trades(conn: sqlite3.Connection, lawd_cd: str,
                  dong_nm: str, bldg_name: str | None,
-                 area: float | None) -> dict:
+                 area: float | None,
+                 jibun: str | None = None) -> dict:
     """캐시된 거래 데이터에서 3단계 폴백으로 유사 거래를 찾는다.
     모든 API 타입의 캐시를 통합 검색한다.
 
@@ -359,7 +360,7 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
 
     # 모든 API 타입의 캐시를 통합 검색
     all_trades = conn.execute(
-        """SELECT dong_nm, bldg_nm, exclu_use_ar, deal_amount,
+        """SELECT dong_nm, jibun, bldg_nm, exclu_use_ar, deal_amount,
                   floor, build_year, deal_day, deal_ymd, unit_price
            FROM MOLIT_TRADE_CACHE
            WHERE lawd_cd=? AND deal_ymd IN ({})
@@ -373,10 +374,20 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
         return {"status": "no_data", "match_tier": None, "transactions": [],
                 "summary": None, "comparison": None}
 
-    cols = ["dong_nm", "bldg_nm", "exclu_use_ar", "deal_amount",
+    cols = ["dong_nm", "jibun", "bldg_nm", "exclu_use_ar", "deal_amount",
             "floor", "build_year", "deal_day", "deal_ymd", "unit_price"]
 
     trades = [dict(zip(cols, row)) for row in all_trades]
+
+    # Tier 0: 같은 읍면동 + 같은 지번 (면적 제한 없음 — 같은 건물 확정)
+    if jibun:
+        tier0 = [
+            t for t in trades
+            if t["dong_nm"] == dong_nm
+            and _jibun_match(jibun, t.get("jibun"))
+        ]
+        if tier0:
+            return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area)
 
     # Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±30%
     tier1 = [
