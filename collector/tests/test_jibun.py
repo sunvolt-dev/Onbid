@@ -2,7 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from molit_fetcher import extract_jibun
+from molit_fetcher import extract_jibun, _jibun_match
 
 
 class TestExtractJibun:
@@ -41,3 +41,34 @@ class TestExtractJibun:
 
     def test_brackets_in_name(self):
         assert extract_jibun("울산 남구 신정동 1222-7 [신정반트펠리시아] 제6층") == "1222-7"
+
+
+class TestJibunMatch:
+    """지번 매칭 규칙 테스트."""
+
+    def test_exact_match(self):
+        assert _jibun_match("302-8", "302-8") is True
+
+    def test_bonbun_match(self):
+        assert _jibun_match("302-8", "302") is True
+
+    def test_reverse_bonbun_match(self):
+        assert _jibun_match("302", "302-8") is True
+
+    def test_different_bonbun(self):
+        assert _jibun_match("302-8", "303-1") is False
+
+    def test_none_a(self):
+        assert _jibun_match(None, "302-8") is False
+
+    def test_none_b(self):
+        assert _jibun_match("302-8", None) is False
+
+    def test_both_none(self):
+        assert _jibun_match(None, None) is False
+
+    def test_empty_string(self):
+        assert _jibun_match("", "302-8") is False
+
+    def test_same_bonbun_different_bubun(self):
+        assert _jibun_match("302-8", "302-3") is True

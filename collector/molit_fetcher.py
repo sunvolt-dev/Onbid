@@ -323,6 +323,21 @@ def _area_match(onbid_area: float, trade_area: float) -> bool:
     return (1 - AREA_TOLERANCE) <= ratio <= (1 + AREA_TOLERANCE)
 
 
+def _jibun_match(a: str | None, b: str | None) -> bool:
+    """지번 매칭. 본번이 같으면 매칭 (같은 필지).
+
+    "302-8" vs "302-8" → True (정확 매칭)
+    "302-8" vs "302"   → True (본번 매칭 — 부번 0 생략 케이스)
+    "302-8" vs "302-3" → True (같은 본번, 같은 필지 가능성 높음)
+    "302-8" vs "303-1" → False (본번 다름)
+    """
+    if not a or not b:
+        return False
+    bonbun_a = a.split("-")[0]
+    bonbun_b = b.split("-")[0]
+    return bonbun_a == bonbun_b
+
+
 def match_trades(conn: sqlite3.Connection, lawd_cd: str,
                  dong_nm: str, bldg_name: str | None,
                  area: float | None) -> dict:
