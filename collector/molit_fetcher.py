@@ -8,7 +8,8 @@ molit_fetcher.py
   - 오피스텔 매매: RTMSDataSvcOffiTrade
   - 상업업무용 매매: RTMSDataSvcNrgTrade
 
-[매칭 알고리즘 — 3단계 폴백]
+[매칭 알고리즘 — 4단계 폴백]
+  Tier 0: 같은 읍면동 + 같은 지번 (면적 무관, 같은 건물 확정)
   Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±30%
   Tier 2: 같은 읍면동 + 면적 ±30%
   Tier 3: 같은 시군구 + 면적 ±30%
@@ -483,7 +484,8 @@ def get_market_price(conn: sqlite3.Connection,
         emd_nm:    읍면동명
         usg_scls:  용도소분류명 (오피스텔/업무시설/주·상용건물)
         bld_sqms:  건물면적 (㎡)
-        cltr_nm:   물건명 (건물명 추출용)
+        cltr_nm:   물건명 (건물명/지번 추출용)
+        zadr_nm:   지번주소 (지번 추출 우선 소스, 없으면 cltr_nm 사용)
 
     Returns: API 응답용 dict
     """
