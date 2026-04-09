@@ -547,7 +547,9 @@ if __name__ == "__main__":
     conn = sqlite3.connect(DB_PATH)
     init_molit_db(conn)
 
-    # 테스트: 인천 미추홀구 숭의동 오피스텔 76.86㎡
+    import json
+
+    # 테스트 1: 인천 미추홀구 숭의동 오피스텔 (zadr_nm 없음 → cltr_nm에서 지번 추출)
     result = get_market_price(
         conn,
         sd_nm="인천광역시",
@@ -557,7 +559,23 @@ if __name__ == "__main__":
         bld_sqms=76.86,
         cltr_nm="인천광역시 미추홀구 숭의동 302-8 외 4필지 숭의엠타운 903호 오피스텔",
     )
-
-    import json
+    print("=== Test 1: cltr_nm 지번 추출 ===")
+    print(f"match_tier: {result.get('match_tier')}, status: {result['status']}")
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    # 테스트 2: zadr_nm 있는 케이스
+    result2 = get_market_price(
+        conn,
+        sd_nm="서울특별시",
+        sggn_nm="송파구",
+        emd_nm="거여동",
+        usg_scls="오피스텔",
+        bld_sqms=30.0,
+        cltr_nm="서울특별시 송파구 거여동 604-3 아피체 제1층 제111호",
+        zadr_nm="서울특별시 송파구 거여동 604-3 아피체 제1층 제111호",
+    )
+    print("\n=== Test 2: zadr_nm 지번 추출 ===")
+    print(f"match_tier: {result2.get('match_tier')}, status: {result2['status']}")
+    print(json.dumps(result2, ensure_ascii=False, indent=2))
+
     conn.close()
