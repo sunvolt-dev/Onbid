@@ -210,6 +210,7 @@ def _parse_xml_items(xml_text: str) -> list[dict]:
 
         items.append({
             "dong_nm":      (item.findtext("umdNm") or "").strip(),
+            "jibun":        (item.findtext("jibun") or "").strip() or None,
             "bldg_nm":      bldg_nm,
             "exclu_use_ar": ar_val,
             "deal_amount":  deal_amount,
@@ -274,12 +275,12 @@ def fetch_and_cache(conn: sqlite3.Connection, lawd_cd: str, deal_ymd: str,
     for it in items:
         conn.execute(
             """INSERT INTO MOLIT_TRADE_CACHE
-               (lawd_cd, deal_ymd, api_type, dong_nm, bldg_nm,
+               (lawd_cd, deal_ymd, api_type, dong_nm, jibun, bldg_nm,
                 exclu_use_ar, deal_amount, floor, build_year, deal_day,
                 unit_price, fetched_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (lawd_cd, deal_ymd, api_type,
-             it["dong_nm"], it["bldg_nm"],
+             it["dong_nm"], it.get("jibun"), it["bldg_nm"],
              it["exclu_use_ar"], it["deal_amount"],
              it["floor"], it["build_year"], it["deal_day"],
              it.get("unit_price"), now),
