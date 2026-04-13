@@ -79,7 +79,7 @@ export default function TabInfo({ item }: Props) {
             position: coords,
             map,
             content: `<div style="
-              background:#185fa5;color:#fff;font-size:11px;font-weight:700;
+              background:var(--color-primary);color:#fff;font-size:11px;font-weight:700;
               padding:4px 10px;border-radius:99px;white-space:nowrap;
               box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:42px;
             ">${item.lctn_sggn_nm}</div>`,
@@ -103,17 +103,17 @@ export default function TabInfo({ item }: Props) {
   }, [item]);
 
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex gap-2 py-2 border-b border-[#e8e6df] last:border-0">
-      <span className="text-xs text-[#9c9a92] w-28 shrink-0">{label}</span>
-      <span className="text-xs text-[#1a1a18] flex-1">{value}</span>
+    <div className="flex gap-2 py-2 border-b border-border last:border-0">
+      <span className="text-xs text-text-4 w-28 shrink-0">{label}</span>
+      <span className="text-xs text-text-1 flex-1">{value}</span>
     </div>
   );
 
   return (
     <div className="flex gap-6">
         {/* 좌: 정보 그리드 */}
-        <div className="flex-1 bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-[#1a1a18] mb-3">물건 기본정보</h3>
+        <div className="flex-1 bg-surface shadow-card rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-text-1 mb-3">물건 기본정보</h3>
           <InfoRow label="소재지" value={`${item.lctn_sd_nm} ${item.lctn_sggn_nm} ${item.lctn_emd_nm}`} />
           <InfoRow label="자산구분" value={item.prpt_div_nm} />
           <InfoRow label="건물용도" value={`${item.cltr_usg_mcls_nm} > ${item.cltr_usg_scls_nm}`} />
@@ -127,39 +127,39 @@ export default function TabInfo({ item }: Props) {
           <InfoRow label="지분물건" value={item.alc_yn === "Y" ? "예" : "아니오"} />
 
           {infoLoading && (
-            <div className="mt-4 text-xs text-[#9c9a92] animate-pulse">상세 정보 로딩 중...</div>
+            <div className="mt-4 text-xs text-text-4 animate-pulse">상세 정보 로딩 중...</div>
           )}
           {infoError && (
-            <div className="mt-4 text-xs text-red-500">상세 정보를 불러올 수 없습니다.</div>
+            <div className="mt-4 text-xs text-hot-fg">상세 정보를 불러올 수 없습니다.</div>
           )}
 
           {(item.zadr_nm || item.loc_vnty_pscd_cont || item.utlz_pscd_cont || item.cltr_etc_cont || item.icdl_cdtn_cont) && (
             <div className="mt-4">
-              <h3 className="text-sm font-semibold text-[#1a1a18] mb-3">위치 및 이용현황</h3>
+              <h3 className="text-sm font-semibold text-text-1 mb-3">위치 및 이용현황</h3>
               {item.zadr_nm && <InfoRow label="지번" value={item.zadr_nm} />}
               {item.cltr_radr && <InfoRow label="도로명" value={item.cltr_radr} />}
               {item.loc_vnty_pscd_cont && (
-                <div className="py-2 border-b border-[#e8e6df]">
-                  <span className="text-xs text-[#9c9a92] block mb-1">위치 및 부근현황</span>
-                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.loc_vnty_pscd_cont}</p>
+                <div className="py-2 border-b border-border">
+                  <span className="text-xs text-text-4 block mb-1">위치 및 부근현황</span>
+                  <p className="text-xs text-text-1 whitespace-pre-wrap">{item.loc_vnty_pscd_cont}</p>
                 </div>
               )}
               {item.utlz_pscd_cont && (
-                <div className="py-2 border-b border-[#e8e6df]">
-                  <span className="text-xs text-[#9c9a92] block mb-1">이용현황</span>
-                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.utlz_pscd_cont}</p>
+                <div className="py-2 border-b border-border">
+                  <span className="text-xs text-text-4 block mb-1">이용현황</span>
+                  <p className="text-xs text-text-1 whitespace-pre-wrap">{item.utlz_pscd_cont}</p>
                 </div>
               )}
               {item.icdl_cdtn_cont && (
-                <div className="py-2 border-b border-[#e8e6df]">
-                  <span className="text-xs text-[#9c9a92] block mb-1">부대조건</span>
-                  <p className="text-xs text-[#1a1a18] whitespace-pre-wrap">{item.icdl_cdtn_cont}</p>
+                <div className="py-2 border-b border-border">
+                  <span className="text-xs text-text-4 block mb-1">부대조건</span>
+                  <p className="text-xs text-text-1 whitespace-pre-wrap">{item.icdl_cdtn_cont}</p>
                 </div>
               )}
               {item.cltr_etc_cont && (
                 <div className="py-2">
-                  <span className="text-xs text-[#9c9a92] block mb-1">기타사항</span>
-                  <p className="text-xs text-[#5f5e5a] bg-gray-50 border border-[#e8e6df] rounded p-3 whitespace-pre-wrap">{item.cltr_etc_cont}</p>
+                  <span className="text-xs text-text-4 block mb-1">기타사항</span>
+                  <p className="text-xs text-text-3 bg-surface-muted border border-border rounded p-3 whitespace-pre-wrap">{item.cltr_etc_cont}</p>
                 </div>
               )}
             </div>
@@ -167,7 +167,7 @@ export default function TabInfo({ item }: Props) {
 
           {info && info.sqms.length > 0 && (
             <div className="mt-4">
-              <p className="text-xs font-semibold text-[#3d3d3a] mb-2">면적 정보</p>
+              <p className="text-xs font-semibold text-text-2 mb-2">면적 정보</p>
               <LabeledTable
                 data={info.sqms}
                 columns={SQMS_COLS}
@@ -178,9 +178,9 @@ export default function TabInfo({ item }: Props) {
 
         {/* 우: 카카오맵 */}
         <div className="w-80 shrink-0">
-          <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl overflow-hidden h-full flex flex-col">
-            <div className="px-4 py-3 border-b border-[#e8e6df] flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#3d3d3a]">소재지 지도</span>
+          <div className="bg-surface shadow-card rounded-xl overflow-hidden h-full flex flex-col">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-xs font-semibold text-text-2">소재지 지도</span>
               <span className="text-[10px] bg-[#FEE500] text-[#3C1E1E] px-2 py-0.5 rounded font-bold">kakao</span>
             </div>
 
@@ -189,19 +189,19 @@ export default function TabInfo({ item }: Props) {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 p-5 text-center">
                 <div className="w-12 h-12 bg-[#FEE500] rounded-full flex items-center justify-center text-xl">🗺️</div>
-                <p className="text-xs font-medium text-[#3d3d3a]">카카오맵 API 키 필요</p>
-                <p className="text-[11px] text-[#9c9a92] leading-relaxed">
-                  <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_KAKAO_MAP_KEY</code><br />
+                <p className="text-xs font-medium text-text-2">카카오맵 API 키 필요</p>
+                <p className="text-[11px] text-text-4 leading-relaxed">
+                  <code className="bg-border px-1 rounded">NEXT_PUBLIC_KAKAO_MAP_KEY</code><br />
                   환경변수를 설정하세요
                 </p>
-                <p className="text-[11px] text-[#185fa5] font-medium mt-1">
+                <p className="text-[11px] text-primary font-medium mt-1">
                   {item.lctn_sd_nm} {item.lctn_sggn_nm} {item.lctn_emd_nm}
                 </p>
               </div>
             )}
 
             {KAKAO_KEY && (
-              <div className="px-3 py-2 bg-[#faf9f7] border-t border-[#e8e6df] text-[11px] text-[#73726c]">
+              <div className="px-3 py-2 bg-surface-muted border-t border-border text-[11px] text-text-3">
                 {item.lctn_sd_nm} {item.lctn_sggn_nm} {item.lctn_emd_nm}
               </div>
             )}

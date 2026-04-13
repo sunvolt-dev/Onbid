@@ -16,29 +16,23 @@ export default function StatsBar() {
 
   if (error) return null;
   if (!stats) {
-    return (
-      <div className="h-10 bg-[#faf9f7] border border-[#e8e6df] rounded-lg animate-pulse" />
-    );
+    return <div className="h-10 bg-surface shadow-card rounded-lg animate-pulse" />;
   }
 
   return (
-    <div className="flex items-center gap-3 bg-[#faf9f7] border border-[#e8e6df] rounded-lg px-4 py-2 text-sm">
-      <span className="text-[#5f5e5a] text-xs">통계</span>
-      <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 rounded-full px-2 py-0.5 text-xs font-medium">
-        60% 미만
-        <span className="font-bold">{stats.ratio_below60}</span>건
+    <div className="flex items-center gap-3 bg-surface shadow-card rounded-lg px-4 py-2 text-sm flex-wrap">
+      <span className="text-text-3 text-xs">통계</span>
+      <span className="inline-flex items-center gap-1 bg-hot-bg text-hot-fg rounded-full px-2 py-0.5 text-xs font-medium">
+        60% 미만 <span className="font-bold">{stats.ratio_below60}</span>건
       </span>
-      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 text-xs font-medium">
-        60~70%
-        <span className="font-bold">{stats.ratio_60_70}</span>건
+      <span className="inline-flex items-center gap-1 bg-mid-bg text-mid-fg rounded-full px-2 py-0.5 text-xs font-medium">
+        60~70% <span className="font-bold">{stats.ratio_60_70}</span>건
       </span>
-      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 text-xs font-medium">
-        전체
-        <span className="font-bold">{stats.total}</span>건
+      <span className="inline-flex items-center gap-1 bg-primary-subtle text-primary rounded-full px-2 py-0.5 text-xs font-medium">
+        전체 <span className="font-bold">{stats.total}</span>건
       </span>
-      <span className="ml-auto text-xs text-[#5f5e5a]">
-        수의계약 가능{" "}
-        <span className="font-semibold text-[#185fa5]">{stats.pvct_count}</span>건
+      <span className="ml-auto text-xs text-text-3">
+        수의계약 가능 <span className="font-semibold text-primary">{stats.pvct_count}</span>건
       </span>
     </div>
   );
