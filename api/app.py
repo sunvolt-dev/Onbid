@@ -560,6 +560,10 @@ def analytics_summary():
             "SELECT COUNT(*) FROM BID_ITEMS WHERE status = 'active'"
         ).fetchone()[0]
 
+        avg_ratio = conn.execute(
+            "SELECT ROUND(AVG(ratio_pct), 1) FROM BID_ITEMS WHERE status = 'active' AND ratio_pct IS NOT NULL"
+        ).fetchone()[0]
+
         by_region = conn.execute("""
             SELECT lctn_sd_nm AS region, COUNT(*) AS count,
                    ROUND(AVG(ratio_pct), 1) AS avg_ratio
@@ -600,6 +604,7 @@ def analytics_summary():
         return jsonify({
             "total_items": total,
             "total_delta": total - yesterday_total if yesterday_total else None,
+            "avg_ratio_pct": avg_ratio,
             "by_region": [dict(r) for r in by_region],
             "by_usage_type": [dict(r) for r in by_usage],
             "ratio_distribution": [dict(r) for r in ratio_dist],
