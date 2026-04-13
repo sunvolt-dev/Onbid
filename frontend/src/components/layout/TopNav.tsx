@@ -29,6 +29,7 @@ export default function TopNav() {
       <div className="flex items-center gap-4 text-sm">
         <NavLink href="/">Overview</NavLink>
         <NavLink href="/analytics">Analytics</NavLink>
+        <NavLink href="/bookmark">Bookmark</NavLink>
       </div>
     </nav>
   );
