@@ -20,5 +20,8 @@ collector/*.log
 .docs/
 docs/
 
+# superpowers brainstorm session artifacts (mockups)
+.superpowers/
+
 *.log
 
