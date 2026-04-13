@@ -773,5 +773,91 @@ def analytics_flow():
         conn.close()
 
 
+# ─────────────────────────────────────────
+# GET /api/analytics/discount-by-region
+# 지역별 시세 대비 평균 할인율 (근사)
+#  - BID 평균 단가: 활성 BID_ITEMS의 lowst_bid_prc / bld_sqms 평균 (원/㎡)
+#  - MOLIT 평균 단가: 최근 6개월 MOLIT_TRADE_CACHE.unit_price 평균 (만원/㎡)
+#  - discount_pct = (1 - bid/molit_won) * 100
+# ─────────────────────────────────────────
+@app.route("/api/analytics/discount-by-region")
+def analytics_discount_by_region():
+    # 시도 코드 → 시도명
+    SIDO_CODE_MAP = {
+        "11": "서울특별시", "26": "부산광역시", "27": "대구광역시",
+        "28": "인천광역시", "29": "광주광역시", "30": "대전광역시",
+        "31": "울산광역시", "36": "세종특별자치시", "41": "경기도",
+    }
+
+    conn = get_db()
+    try:
+        # BID 지역별 평균 단가 (원/㎡)
+        bid_rows = conn.execute("""
+            SELECT lctn_sd_nm AS region,
+                   COUNT(*) AS bid_item_count,
+                   AVG(CASE WHEN bld_sqms > 0 THEN lowst_bid_prc * 1.0 / bld_sqms END) AS bid_avg_per_sqm
+            FROM BID_ITEMS
+            WHERE status = 'active' AND bld_sqms IS NOT NULL AND bld_sqms > 0
+              AND lowst_bid_prc IS NOT NULL
+            GROUP BY lctn_sd_nm
+        """).fetchall()
+        bid_by_region = {r["region"]: dict(r) for r in bid_rows}
+
+        # MOLIT 지역별 평균 단가 (만원/㎡), 최근 6개월
+        # MOLIT_TRADE_CACHE.deal_ymd = YYYYMM, lawd_cd 앞 2자리 = 시도
+        from datetime import datetime
+        today = datetime.today()
+        six_months_ago = f"{today.year}{today.month:02d}"
+        # 6개월 전 YYYYMM 계산
+        y, m = today.year, today.month - 6
+        while m <= 0:
+            y -= 1
+            m += 12
+        start_ymd = f"{y}{m:02d}"
+
+        molit_rows = conn.execute("""
+            SELECT substr(lawd_cd, 1, 2) AS sido_cd,
+                   COUNT(*) AS molit_deal_count,
+                   AVG(unit_price) AS molit_avg_per_sqm_manwon
+            FROM MOLIT_TRADE_CACHE
+            WHERE deal_ymd >= ? AND unit_price IS NOT NULL AND unit_price > 0
+            GROUP BY substr(lawd_cd, 1, 2)
+        """, (start_ymd,)).fetchall()
+
+        molit_by_region = {}
+        for r in molit_rows:
+            sido = SIDO_CODE_MAP.get(r["sido_cd"])
+            if sido:
+                molit_by_region[sido] = {
+                    "molit_deal_count": r["molit_deal_count"],
+                    "molit_avg_per_sqm": r["molit_avg_per_sqm_manwon"] * 10000,  # 만원 → 원
+                }
+
+        # 병합 및 할인율 계산
+        data = []
+        for region, bid in bid_by_region.items():
+            molit = molit_by_region.get(region)
+            bid_avg = bid["bid_avg_per_sqm"]
+            if molit and molit["molit_avg_per_sqm"] and molit["molit_avg_per_sqm"] > 0 and bid_avg is not None:
+                discount_pct = round((1 - bid_avg / molit["molit_avg_per_sqm"]) * 100, 1)
+            else:
+                discount_pct = None
+            data.append({
+                "region": region,
+                "bid_item_count": bid["bid_item_count"],
+                "molit_deal_count": molit["molit_deal_count"] if molit else 0,
+                "bid_avg_per_sqm": round(bid_avg) if bid_avg else None,
+                "molit_avg_per_sqm": round(molit["molit_avg_per_sqm"]) if molit else None,
+                "discount_pct": discount_pct,
+            })
+
+        # 할인율 높은 순 정렬 (None은 뒤로)
+        data.sort(key=lambda x: (x["discount_pct"] is None, -(x["discount_pct"] or 0)))
+
+        return jsonify({"data": data})
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
