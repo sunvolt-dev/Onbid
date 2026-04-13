@@ -79,7 +79,7 @@ export default function TabInfo({ item }: Props) {
             position: coords,
             map,
             content: `<div style="
-              background:#185fa5;color:#fff;font-size:11px;font-weight:700;
+              background:var(--color-primary);color:#fff;font-size:11px;font-weight:700;
               padding:4px 10px;border-radius:99px;white-space:nowrap;
               box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:42px;
             ">${item.lctn_sggn_nm}</div>`,
