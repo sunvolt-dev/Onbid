@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
 import { fmtAmt, daysLeft } from "@/utils/format";
+import { isNewToday } from "@/utils/itemFlags";
 import RatioPill from "@/components/ui/RatioPill";
 import DeadlineLabel from "@/components/ui/DeadlineLabel";
 
@@ -19,11 +20,6 @@ function ratioDot(ratio: number): string {
   if (ratio < 60) return "bg-hot-fg";
   if (ratio < 70) return "bg-mid-fg";
   return "bg-transparent";
-}
-
-function isNewToday(firstCollected: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  return firstCollected.slice(0, 10) === today;
 }
 
 export default function ItemTable({ items, filter, onSortChange }: Props) {
