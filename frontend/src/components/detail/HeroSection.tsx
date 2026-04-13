@@ -1,7 +1,10 @@
+// frontend/src/components/detail/HeroSection.tsx
 "use client";
 
 import { fmtKRW, sqmsToPyeong, dLabel, daysLeft } from "@/utils/format";
+import { useMarketPrice } from "@/hooks/useMarketPrice";
 import type { BidItem } from "@/types";
+import HeroMap from "./HeroMap";
 
 interface Props {
   item: BidItem;
@@ -30,19 +33,31 @@ function RatioText({ r }: { r: number }) {
   return <span className={`text-base font-bold ${cls} tabular-nums`}>{r.toFixed(1)}%</span>;
 }
 
+function DiscountText({ discount }: { discount: number | null | undefined }) {
+  if (discount == null) return <span className="text-base text-text-4">-</span>;
+  const cls =
+    discount > 30 ? "text-hot-fg" : discount > 15 ? "text-mid-fg" : "text-ok-fg";
+  return (
+    <span className={`text-base font-bold ${cls} tabular-nums`}>
+      -{discount.toFixed(1)}%
+    </span>
+  );
+}
+
 export default function HeroSection({ item, onBookmark, onRefresh, refreshing }: Props) {
+  const address = `${item.lctn_sd_nm} ${item.lctn_sggn_nm} ${item.lctn_emd_nm}`;
+  const { market } = useMarketPrice(item.cltr_mng_no);
+  const discount = market?.comparison?.discount_from_market_pct ?? null;
+
   return (
     <div className="bg-surface shadow-card rounded-xl p-5 md:p-6">
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* 썸네일 */}
-        <div className="w-full md:w-52 h-40 shrink-0 rounded-lg overflow-hidden bg-surface-muted flex items-center justify-center text-center">
-          <div className="flex flex-col items-center gap-1.5">
-            <span className="text-3xl">🏢</span>
-            <span className="text-xs text-text-4">{item.cltr_usg_scls_nm}</span>
-          </div>
+      <div className="flex flex-col md:flex-row gap-5 md:gap-6">
+        {/* 좌: 지도 */}
+        <div className="w-full md:w-60 h-48 md:h-auto md:self-stretch shrink-0 rounded-lg overflow-hidden bg-surface-muted">
+          <HeroMap address={address} labelSggn={item.lctn_sggn_nm} className="w-full h-full" />
         </div>
 
-        {/* 정보 */}
+        {/* 중: 정보 */}
         <div className="flex-1 flex flex-col gap-3 min-w-0">
           {/* 배지 */}
           <div className="flex flex-wrap gap-1.5">
@@ -73,13 +88,35 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
             <h1 className="text-xl md:text-2xl font-bold text-text-1 tracking-tight mt-0.5">
               {item.onbid_cltr_nm}
             </h1>
-            <p className="text-sm text-text-2 mt-1">
-              {item.lctn_sd_nm} {item.lctn_sggn_nm} {item.lctn_emd_nm}
-            </p>
+            <p className="text-sm text-text-2 mt-1">{address}</p>
             <p className="text-xs text-text-4 mt-0.5">
               건물 {sqmsToPyeong(item.bld_sqms)}
               {item.land_sqms != null && ` / 토지 ${sqmsToPyeong(item.land_sqms)}`}
             </p>
+          </div>
+
+          {/* 가격 */}
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <span className="text-sm text-text-4 line-through tabular-nums">
+              {fmtKRW(item.apsl_evl_amt)}
+            </span>
+            <span className="text-2xl font-bold text-primary tabular-nums tracking-tight">
+              {fmtKRW(item.lowst_bid_prc)}
+            </span>
+          </div>
+
+          {/* 게이지바 (가격 바로 아래) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-4 w-6">0%</span>
+            <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  item.ratio_pct < 60 ? "bg-hot-fg" : item.ratio_pct < 70 ? "bg-mid-fg" : "bg-ok-fg"
+                }`}
+                style={{ width: `${Math.min(item.ratio_pct, 100)}%` }}
+              />
+            </div>
+            <span className="text-xs text-text-4 w-8">100%</span>
           </div>
 
           {/* 핵심 4수치 */}
@@ -89,8 +126,8 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
               <RatioText r={item.ratio_pct} />
             </div>
             <div className="bg-surface-muted rounded-lg px-3 py-2 text-center">
-              <p className="text-xs text-text-4 mb-1">회차</p>
-              <p className="text-base font-bold text-text-1 tabular-nums">{Number(item.pbct_nsq)}회</p>
+              <p className="text-xs text-text-4 mb-1">시세 대비</p>
+              <DiscountText discount={discount} />
             </div>
             <div className="bg-surface-muted rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-text-4 mb-1">유찰 횟수</p>
@@ -120,31 +157,9 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
               )}
             </div>
           </div>
-
-          {/* 가격 */}
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-sm text-text-4 line-through tabular-nums">{fmtKRW(item.apsl_evl_amt)}</span>
-            <span className="text-2xl font-bold text-primary tabular-nums tracking-tight">
-              {fmtKRW(item.lowst_bid_prc)}
-            </span>
-          </div>
-
-          {/* 게이지바 */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-4 w-6">0%</span>
-            <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  item.ratio_pct < 60 ? "bg-hot-fg" : item.ratio_pct < 70 ? "bg-mid-fg" : "bg-ok-fg"
-                }`}
-                style={{ width: `${Math.min(item.ratio_pct, 100)}%` }}
-              />
-            </div>
-            <span className="text-xs text-text-4 w-8">100%</span>
-          </div>
         </div>
 
-        {/* 액션 */}
+        {/* 우: 액션 */}
         <div className="flex md:flex-col gap-2 shrink-0">
           <button
             onClick={onRefresh}
