@@ -18,18 +18,18 @@ interface RiskItem {
 function StatusPill({ status }: { status: Status }) {
   if (status === "ok")
     return (
-      <span className="text-[11px] bg-green-100 text-green-700 border border-green-300 rounded-full px-2 py-0.5 font-medium">
+      <span className="text-xs bg-ok-bg text-ok-fg rounded-full px-2 py-0.5 font-medium">
         양호
       </span>
     );
   if (status === "warn")
     return (
-      <span className="text-[11px] bg-amber-100 text-amber-700 border border-amber-300 rounded-full px-2 py-0.5 font-medium">
+      <span className="text-xs bg-mid-bg text-mid-fg rounded-full px-2 py-0.5 font-medium">
         주의
       </span>
     );
   return (
-    <span className="text-[11px] bg-gray-100 text-gray-500 border border-gray-300 rounded-full px-2 py-0.5">
+    <span className="text-xs bg-border text-text-3 rounded-full px-2 py-0.5">
       확인 필요
     </span>
   );
@@ -95,15 +95,15 @@ export default function TabRisk({ item }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className={`rounded-xl p-4 border ${
+      <div className={`rounded-xl p-4 ${
         warnCount >= 3
-          ? "bg-red-50 border-red-200"
+          ? "bg-hot-bg"
           : warnCount >= 1
-          ? "bg-amber-50 border-amber-200"
-          : "bg-green-50 border-green-200"
+          ? "bg-mid-bg"
+          : "bg-ok-bg"
       }`}>
         <p className={`text-sm font-semibold ${
-          warnCount >= 3 ? "text-red-700" : warnCount >= 1 ? "text-amber-700" : "text-green-700"
+          warnCount >= 3 ? "text-hot-fg" : warnCount >= 1 ? "text-mid-fg" : "text-ok-fg"
         }`}>
           {warnCount >= 3
             ? `주의 항목 ${warnCount}개 — 신중한 검토 필요`
@@ -113,13 +113,13 @@ export default function TabRisk({ item }: Props) {
         </p>
       </div>
 
-      <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl divide-y divide-[#e8e6df]">
+      <div className="bg-surface shadow-card rounded-xl divide-y divide-border">
         {risks.map((risk) => (
           <div key={risk.label} className="flex items-center gap-4 px-5 py-3.5">
             <StatusPill status={risk.status} />
             <div className="flex-1">
-              <p className="text-sm font-medium text-[#1a1a18]">{risk.label}</p>
-              <p className="text-xs text-[#73726c] mt-0.5">{risk.description}</p>
+              <p className="text-sm font-medium text-text-1">{risk.label}</p>
+              <p className="text-xs text-text-3 mt-0.5">{risk.description}</p>
             </div>
           </div>
         ))}

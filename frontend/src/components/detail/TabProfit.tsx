@@ -57,8 +57,8 @@ export default function TabProfit({ item }: Props) {
     <div className="flex flex-col gap-6">
       {/* 시세 비교 섹션 */}
       {loading ? (
-        <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-8 text-center">
-          <div className="animate-pulse text-sm text-[#9c9a92]">국토부 실거래가 조회 중...</div>
+        <div className="bg-surface shadow-card rounded-xl p-8 text-center">
+          <div className="animate-pulse text-sm text-text-4">국토부 실거래가 조회 중...</div>
         </div>
       ) : error ? (
         <StatusBanner icon="⚠️" title="조회 실패" desc={error} />
@@ -69,24 +69,24 @@ export default function TabProfit({ item }: Props) {
       ) : null}
 
       {/* 기준 정보 */}
-      <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-5">
-        <p className="text-sm font-semibold text-[#1a1a18] mb-3">현재 물건 기준값</p>
+      <div className="bg-surface shadow-card rounded-xl p-5">
+        <p className="text-sm font-semibold text-text-1 mb-3">현재 물건 기준값</p>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
-            <p className="text-[11px] text-[#9c9a92]">감정평가액</p>
-            <p className="text-base font-bold text-[#1a1a18] mt-0.5">{fmtAmt(item.apsl_evl_amt)}</p>
-            <p className="text-[11px] text-[#9c9a92] mt-0.5">{fmtKRW(item.apsl_evl_amt)}</p>
+            <p className="text-[11px] text-text-4">감정평가액</p>
+            <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">{fmtAmt(item.apsl_evl_amt)}</p>
+            <p className="text-[11px] text-text-4 mt-0.5">{fmtKRW(item.apsl_evl_amt)}</p>
           </div>
-          <div className="text-center border-x border-[#e8e6df]">
-            <p className="text-[11px] text-[#9c9a92]">최저입찰가</p>
-            <p className="text-base font-bold text-[#185fa5] mt-0.5">{fmtAmt(item.lowst_bid_prc)}</p>
-            <p className="text-[11px] text-[#9c9a92] mt-0.5">{fmtKRW(item.lowst_bid_prc)}</p>
+          <div className="text-center border-x border-border">
+            <p className="text-[11px] text-text-4">최저입찰가</p>
+            <p className="text-base font-bold text-primary mt-0.5 tabular-nums">{fmtAmt(item.lowst_bid_prc)}</p>
+            <p className="text-[11px] text-text-4 mt-0.5">{fmtKRW(item.lowst_bid_prc)}</p>
           </div>
           <div className="text-center">
-            <p className="text-[11px] text-[#9c9a92]">감정가 대비</p>
+            <p className="text-[11px] text-text-4">감정가 대비</p>
             <p
-              className={`text-base font-bold mt-0.5 ${
-                item.ratio_pct < 60 ? "text-red-600" : item.ratio_pct < 70 ? "text-amber-600" : "text-green-600"
+              className={`text-base font-bold mt-0.5 tabular-nums ${
+                item.ratio_pct < 60 ? "text-hot-fg" : item.ratio_pct < 70 ? "text-mid-fg" : "text-ok-fg"
               }`}
             >
               {item.ratio_pct.toFixed(1)}%
@@ -96,21 +96,21 @@ export default function TabProfit({ item }: Props) {
       </div>
 
       {/* 메모 */}
-      <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-5">
-        <p className="text-sm font-semibold text-[#1a1a18] mb-2">수익성 분석 메모</p>
-        <p className="text-xs text-[#9c9a92] mb-3">인근 시세, 예상 임대수익 등 투자 판단 메모를 기록하세요 (로컬 저장)</p>
+      <div className="bg-surface shadow-card rounded-xl p-5">
+        <p className="text-sm font-semibold text-text-1 mb-2">수익성 분석 메모</p>
+        <p className="text-xs text-text-4 mb-3">인근 시세, 예상 임대수익 등 투자 판단 메모를 기록하세요 (로컬 저장)</p>
         <textarea
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
           placeholder="예) 인근 오피스텔 시세 약 ○억, 월세 ○만원 예상, 수익률 약 ○%..."
           rows={6}
-          className="w-full text-xs border border-[#d3d1c7] rounded-lg p-3 resize-none focus:outline-none focus:border-[#185fa5]"
+          className="w-full text-xs border border-border-strong rounded-lg p-3 resize-none focus:outline-none focus:border-primary"
         />
         <div className="flex items-center justify-end gap-2 mt-2">
-          {saved && <span className="text-xs text-green-600">저장됨</span>}
+          {saved && <span className="text-xs text-ok-fg">저장됨</span>}
           <button
             onClick={saveMemo}
-            className="text-xs bg-[#185fa5] text-white px-3 py-1.5 rounded font-medium hover:bg-[#14508f]"
+            className="text-xs bg-primary text-primary-fg px-3 py-1.5 rounded font-medium hover:bg-primary-hover"
           >
             저장
           </button>
@@ -123,13 +123,13 @@ export default function TabProfit({ item }: Props) {
 
 function StatusBanner({ icon, title, desc, extra }: { icon: string; title: string; desc: string; extra?: string }) {
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+    <div className="bg-mid-bg rounded-xl p-5">
       <div className="flex items-start gap-3">
         <span className="text-2xl">{icon}</span>
         <div>
-          <p className="text-sm font-semibold text-amber-800">{title}</p>
-          <p className="text-xs text-amber-700 mt-1">{desc}</p>
-          {extra && <p className="text-xs text-amber-600 mt-1">{extra}</p>}
+          <p className="text-sm font-semibold text-mid-fg">{title}</p>
+          <p className="text-xs text-mid-fg/90 mt-1">{desc}</p>
+          {extra && <p className="text-xs text-mid-fg/70 mt-1">{extra}</p>}
         </div>
       </div>
     </div>
@@ -143,10 +143,10 @@ function MarketSection({ market, item }: { market: MarketPriceResponse; item: Bi
   return (
     <>
       {/* 시세 비교 요약 카드 */}
-      <div className="bg-white border border-[#185fa5]/20 rounded-xl p-5">
+      <div className="bg-surface shadow-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-semibold text-[#1a1a18]">실거래가 기반 시세 비교</p>
-          <span className="text-[10px] text-[#9c9a92] bg-[#f5f4f0] px-2 py-0.5 rounded-full">
+          <p className="text-sm font-semibold text-text-1">실거래가 기반 시세 비교</p>
+          <span className="text-[10px] text-text-4 bg-surface-muted px-2 py-0.5 rounded-full">
             {TIER_LABELS[match_tier ?? 0] ?? ""} / {match_count}건
           </span>
         </div>
@@ -154,49 +154,49 @@ function MarketSection({ market, item }: { market: MarketPriceResponse; item: Bi
         <div className="grid grid-cols-3 gap-4 mb-4">
           {/* 추정 시세 */}
           <div className="text-center">
-            <p className="text-[11px] text-[#9c9a92]">추정 시세</p>
-            <p className="text-base font-bold text-[#1a1a18] mt-0.5">
+            <p className="text-[11px] text-text-4">추정 시세</p>
+            <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">
               {fmtAmt(summary?.estimated_market_price_won)}
             </p>
-            <p className="text-[10px] text-[#9c9a92] mt-0.5">
+            <p className="text-[10px] text-text-4 mt-0.5">
               {summary?.avg_unit_price ? `${summary.avg_unit_price.toFixed(1)}만/㎡` : "-"}
             </p>
           </div>
 
           {/* 최저입찰가 */}
-          <div className="text-center border-x border-[#e8e6df]">
-            <p className="text-[11px] text-[#9c9a92]">최저입찰가</p>
-            <p className="text-base font-bold text-[#185fa5] mt-0.5">
+          <div className="text-center border-x border-border">
+            <p className="text-[11px] text-text-4">최저입찰가</p>
+            <p className="text-base font-bold text-primary mt-0.5 tabular-nums">
               {fmtAmt(item.lowst_bid_prc)}
             </p>
           </div>
 
           {/* 시세 대비 할인율 */}
           <div className="text-center">
-            <p className="text-[11px] text-[#9c9a92]">시세 대비</p>
+            <p className="text-[11px] text-text-4">시세 대비</p>
             {comparison ? (
               <>
-                <p className={`text-base font-bold mt-0.5 ${
+                <p className={`text-base font-bold mt-0.5 tabular-nums ${
                   comparison.discount_from_market_pct > 30
-                    ? "text-red-600"
+                    ? "text-hot-fg"
                     : comparison.discount_from_market_pct > 15
-                    ? "text-amber-600"
-                    : "text-green-600"
+                    ? "text-mid-fg"
+                    : "text-ok-fg"
                 }`}>
                   -{comparison.discount_from_market_pct.toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-[#9c9a92] mt-0.5">
+                <p className="text-[10px] text-text-4 mt-0.5">
                   시세의 {comparison.market_vs_bid_pct.toFixed(1)}%
                 </p>
               </>
             ) : (
-              <p className="text-base font-bold text-[#9c9a92] mt-0.5">-</p>
+              <p className="text-base font-bold text-text-4 mt-0.5">-</p>
             )}
           </div>
         </div>
 
         {summary?.latest_deal && (
-          <p className="text-[10px] text-[#9c9a92] text-right">
+          <p className="text-[10px] text-text-4 text-right">
             최근 거래: {summary.latest_deal}
           </p>
         )}
@@ -204,14 +204,14 @@ function MarketSection({ market, item }: { market: MarketPriceResponse; item: Bi
 
       {/* 실거래 내역 테이블 */}
       {transactions.length > 0 && (
-        <div className="bg-[#faf9f7] border border-[#e8e6df] rounded-xl p-5">
-          <p className="text-sm font-semibold text-[#1a1a18] mb-3">
+        <div className="bg-surface shadow-card rounded-xl p-5">
+          <p className="text-sm font-semibold text-text-1 mb-3">
             인근 실거래 내역
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[#9c9a92] border-b border-[#e8e6df]">
+                <tr className="text-text-4 border-b border-border">
                   <th className="text-left py-2 font-medium">계약일</th>
                   <th className="text-left py-2 font-medium">건물명</th>
                   <th className="text-right py-2 font-medium">전용면적</th>
@@ -222,17 +222,17 @@ function MarketSection({ market, item }: { market: MarketPriceResponse; item: Bi
               </thead>
               <tbody>
                 {transactions.map((tx, i) => (
-                  <tr key={i} className="border-b border-[#f0efe9] last:border-0">
-                    <td className="py-2 text-[#6b6960]">{tx.deal_date}</td>
-                    <td className="py-2 text-[#1a1a18] max-w-[120px] truncate">{tx.bldg_nm || "-"}</td>
-                    <td className="py-2 text-right text-[#6b6960]">
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="py-2 text-text-3">{tx.deal_date}</td>
+                    <td className="py-2 text-text-1 max-w-[120px] truncate">{tx.bldg_nm || "-"}</td>
+                    <td className="py-2 text-right text-text-3 tabular-nums">
                       {tx.exclu_use_ar ? `${tx.exclu_use_ar.toFixed(1)}㎡` : "-"}
                     </td>
-                    <td className="py-2 text-right font-medium text-[#1a1a18]">
+                    <td className="py-2 text-right font-medium text-text-1 tabular-nums">
                       {tx.deal_amount ? `${tx.deal_amount.toLocaleString()}만` : "-"}
                     </td>
-                    <td className="py-2 text-right text-[#6b6960]">{tx.floor || "-"}</td>
-                    <td className="py-2 text-right text-[#9c9a92]">
+                    <td className="py-2 text-right text-text-3 tabular-nums">{tx.floor || "-"}</td>
+                    <td className="py-2 text-right text-text-4 tabular-nums">
                       {tx.unit_price ? `${tx.unit_price.toFixed(1)}` : "-"}
                     </td>
                   </tr>

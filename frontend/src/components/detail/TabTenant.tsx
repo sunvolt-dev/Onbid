@@ -83,21 +83,21 @@ export default function TabTenant({ id, prptDivNm }: Props) {
 
   if (!isArrested) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-        <p className="text-sm font-semibold text-amber-800 mb-1">임차인 정보 미제공</p>
-        <p className="text-xs text-amber-700">
+      <div className="bg-mid-bg rounded-xl p-6 text-center">
+        <p className="text-sm font-semibold text-mid-fg mb-1">임차인 정보 미제공</p>
+        <p className="text-xs text-mid-fg/80">
           신탁재산 / 기타일반재산은 온비드 API에서 임차인 정보를 제공하지 않습니다.
         </p>
-        <p className="text-xs text-amber-600 mt-1">현재 자산 구분: {prptDivNm}</p>
+        <p className="text-xs text-mid-fg/70 mt-1">현재 자산 구분: {prptDivNm}</p>
       </div>
     );
   }
 
   if (loading) {
-    return <div className="text-sm text-[#9c9a92] animate-pulse py-8 text-center">로딩 중...</div>;
+    return <div className="text-sm text-text-4 animate-pulse py-8 text-center">로딩 중...</div>;
   }
   if (error || !tenant) {
-    return <div className="text-sm text-red-500 py-8 text-center">임차인 정보를 불러올 수 없습니다.</div>;
+    return <div className="text-sm text-hot-fg py-8 text-center">임차인 정보를 불러올 수 없습니다.</div>;
   }
 
   return (
@@ -113,7 +113,7 @@ export default function TabTenant({ id, prptDivNm }: Props) {
 function Section({ title, sectionKey, data }: { title: string; sectionKey: string; data: Record<string, unknown>[] }) {
   return (
     <div>
-      <p className="text-sm font-semibold text-[#1a1a18] mb-2">{title}</p>
+      <p className="text-sm font-semibold text-text-1 mb-2">{title}</p>
       <LabeledTable data={data} columns={SECTION_COLS[sectionKey] ?? []} />
     </div>
   );
