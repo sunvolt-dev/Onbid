@@ -62,7 +62,7 @@ export default function BookmarkPage() {
             아직 찜한 물건이 없습니다
           </div>
           <div className="text-sm text-text-4">
-            Overview에서 별 아이콘을 눌러 관심 물건을 추가해보세요
+            물건 상세 페이지에서 별 아이콘을 눌러 관심 물건을 추가해보세요
           </div>
           <Link
             href="/"
