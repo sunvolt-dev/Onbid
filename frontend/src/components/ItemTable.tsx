@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
-import { fmtAmt, dLabel, daysLeft } from "@/utils/format";
+import { fmtAmt, daysLeft } from "@/utils/format";
 import RatioPill from "@/components/ui/RatioPill";
+import DeadlineLabel from "@/components/ui/DeadlineLabel";
 
 const PAGE_SIZE = 50;
 
@@ -12,22 +13,6 @@ interface Props {
   items: BidItem[];
   filter: FilterState;
   onSortChange: (sort: FilterState["sort"]) => void;
-}
-
-function DeadlineLabel({ dt, pvct }: { dt: string; pvct: boolean }) {
-  const dl = daysLeft(dt);
-  const cls =
-    dl < 0 ? "text-text-4" : dl <= 3 ? "text-urgent font-semibold" : "text-text-2";
-  return (
-    <div className={`text-xs whitespace-nowrap ${cls}`}>
-      <div>{dLabel(dt)}</div>
-      {pvct && (
-        <span className="inline-block mt-0.5 text-[10px] bg-mid-bg text-mid-fg rounded px-1.5 py-0.5 font-semibold">
-          수의계약
-        </span>
-      )}
-    </div>
-  );
 }
 
 function ratioDot(ratio: number): string {
