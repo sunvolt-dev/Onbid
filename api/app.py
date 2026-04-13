@@ -41,7 +41,8 @@ def get_items():
     usg_scls   = request.args.get("usg_scls",   type=str)
     limit      = request.args.get("limit",      type=int, default=100)
 
-    conditions = ["status = 'active'"]
+    # bookmarked=1 요청은 닫힌 물건도 포함 — 사용자가 명시적으로 찜한 이력은 상태와 무관하게 노출
+    conditions = [] if bookmarked == 1 else ["status = 'active'"]
     params = []
 
     if ratio_min is not None:

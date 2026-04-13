@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useItems } from "@/hooks/useItems";
-import { daysLeft } from "@/utils/format";
 import BookmarkCard from "@/components/BookmarkCard";
 
 export default function BookmarkPage() {
@@ -16,12 +15,6 @@ export default function BookmarkPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 마감 지나고 수의계약 아닌 물건 숨김 (Overview와 동일)
-  const visibleItems = items.filter((item) => {
-    const dl = daysLeft(item.cltr_bid_end_dt);
-    return !(dl < 0 && item.pvct_trgt_yn !== "Y");
-  });
-
   return (
     <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
       {/* 헤더 */}
@@ -32,7 +25,7 @@ export default function BookmarkPage() {
         </div>
         {!loading && !error && (
           <span className="text-sm text-text-3 tabular-nums">
-            {visibleItems.length}건
+            {items.length}건
           </span>
         )}
       </div>
@@ -55,7 +48,7 @@ export default function BookmarkPage() {
       )}
 
       {/* 빈 상태 */}
-      {!loading && !error && visibleItems.length === 0 && (
+      {!loading && !error && items.length === 0 && (
         <div className="bg-surface shadow-card rounded-xl py-16 px-6 flex flex-col items-center gap-3 text-center">
           <span className="text-5xl" aria-hidden>⭐</span>
           <div className="text-base font-semibold text-text-1">
@@ -74,9 +67,9 @@ export default function BookmarkPage() {
       )}
 
       {/* 카드 그리드 */}
-      {!loading && !error && visibleItems.length > 0 && (
+      {!loading && !error && items.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {visibleItems.map((item) => (
+          {items.map((item) => (
             <BookmarkCard key={item.cltr_mng_no} item={item} />
           ))}
         </div>
