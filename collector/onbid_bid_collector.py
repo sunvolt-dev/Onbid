@@ -269,7 +269,7 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE status = 'active'
+            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
             ORDER BY ratio_pct ASC
         """
@@ -277,7 +277,7 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE status = 'active'
+            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
               AND bid_fetched_at IS NULL
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
             ORDER BY ratio_pct ASC

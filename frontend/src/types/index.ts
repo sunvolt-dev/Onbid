@@ -37,6 +37,12 @@ export interface BidItem {
   icdl_cdtn_cont: string | null;
   zadr_nm: string | null;
   cltr_radr: string | null;
+  score?: number;
+  score_breakdown?: {
+    ratio: number;
+    fail: number;
+    location: number;
+  };
 }
 
 export interface Stats {
@@ -86,6 +92,34 @@ export interface TenantInfo {
   ocpy_rel: Record<string, unknown>[];
   rgst_prmr: Record<string, unknown>[];
   dtbt_rqr: Record<string, unknown>[];
+}
+
+export interface MarketTransaction {
+  dong_nm: string;
+  bldg_nm: string;
+  exclu_use_ar: number | null;
+  deal_amount: number | null;
+  floor: string;
+  deal_date: string;
+  unit_price: number | null;
+}
+
+export interface MarketPriceResponse {
+  status: "ok" | "no_data" | "no_mapping" | "not_supported" | "api_error";
+  message?: string;
+  match_tier: number | null;
+  match_tier_label?: string;
+  match_count?: number;
+  transactions: MarketTransaction[];
+  summary: {
+    avg_unit_price: number | null;
+    estimated_market_price_won: number | null;
+    latest_deal: string | null;
+  } | null;
+  comparison: {
+    market_vs_bid_pct: number;
+    discount_from_market_pct: number;
+  } | null;
 }
 
 export interface FilterState {

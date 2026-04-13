@@ -12,7 +12,10 @@ def mark_closed(conn: sqlite3.Connection, collected_ids: set) -> int:
         return 0
     placeholders = ",".join("?" * len(collected_ids))
     cursor = conn.execute(
-        f"UPDATE BID_ITEMS SET status='closed' WHERE status='active' AND cltr_mng_no NOT IN ({placeholders})",
+        f"""UPDATE BID_ITEMS SET status='closed'
+            WHERE status='active'
+              AND pvct_trgt_yn != 'Y'
+              AND cltr_mng_no NOT IN ({placeholders})""",
         list(collected_ids),
     )
     conn.commit()
