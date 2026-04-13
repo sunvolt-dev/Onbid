@@ -79,8 +79,14 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
     }
   }, [filter.sort]);
 
-  const totalPages = Math.ceil(items.length / PAGE_SIZE);
-  const pageItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // 마감 지나고 수의계약도 아닌 물건은 숨김
+  const visibleItems = items.filter((item) => {
+    const dl = daysLeft(item.cltr_bid_end_dt);
+    return !(dl < 0 && item.pvct_trgt_yn !== "Y");
+  });
+
+  const totalPages = Math.ceil(visibleItems.length / PAGE_SIZE);
+  const pageItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const SortBtn = ({ val, label }: { val: FilterState["sort"]; label: string }) => (
     <button
@@ -104,19 +110,19 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
         <SortBtn val="usbd" label="유찰횟수" />
         <SortBtn val="deadline" label="마감일" />
         <span className="ml-auto text-xs text-text-4 tabular-nums">
-          {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, items.length)} / 총 {items.length}건
+          {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleItems.length)} / 총 {visibleItems.length}건
         </span>
       </div>
 
       {/* 빈 상태 */}
-      {items.length === 0 && (
+      {visibleItems.length === 0 && (
         <div className="bg-surface shadow-card rounded-lg py-12 text-center text-sm text-text-4">
           조건에 맞는 물건이 없습니다
         </div>
       )}
 
       {/* 데스크톱: 테이블 */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="hidden md:block overflow-x-auto bg-surface shadow-card rounded-xl">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -136,15 +142,12 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
             <tbody>
               {pageItems.map((item) => {
                 const dl = daysLeft(item.cltr_bid_end_dt);
-                const expired = dl < 0 && item.pvct_trgt_yn !== "Y";
                 const pvct = dl < 0 && item.pvct_trgt_yn === "Y";
                 return (
                   <tr
                     key={item.cltr_mng_no}
                     className={`border-b border-border cursor-pointer transition-colors ${
-                      expired
-                        ? "opacity-50 hover:opacity-70"
-                        : pvct
+                      pvct
                         ? "bg-mid-bg/30 hover:bg-mid-bg/50 border-l-2 border-l-mid-fg"
                         : "hover:bg-surface-muted"
                     }`}
@@ -217,19 +220,18 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
       )}
 
       {/* 모바일: 카드 리스트 */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="md:hidden flex flex-col gap-2">
           {pageItems.map((item) => {
             const dl = daysLeft(item.cltr_bid_end_dt);
-            const expired = dl < 0 && item.pvct_trgt_yn !== "Y";
             const pvct = dl < 0 && item.pvct_trgt_yn === "Y";
             return (
               <button
                 key={item.cltr_mng_no}
                 onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
-                className={`text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1 transition-opacity ${
-                  expired ? "opacity-50" : ""
-                } ${pvct ? "border-l-2 border-l-mid-fg" : ""}`}
+                className={`text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1 ${
+                  pvct ? "border-l-2 border-l-mid-fg" : ""
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-sm font-medium text-text-1 truncate flex-1">
