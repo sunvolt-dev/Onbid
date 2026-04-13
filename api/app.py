@@ -715,5 +715,63 @@ def analytics_scores():
         conn.close()
 
 
+# ─────────────────────────────────────────
+# GET /api/analytics/flow?period=30d
+# 일별 유입/소진 추이
+# - new_count: BID_ITEMS.first_collected_at 기준
+# - closed_count: DAILY_SNAPSHOT total_count 델타 역산 (근사)
+# ─────────────────────────────────────────
+@app.route("/api/analytics/flow")
+def analytics_flow():
+    period = request.args.get("period", "30d")
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+
+    conn = get_db()
+    try:
+        start_date = (date.today() - timedelta(days=days)).isoformat()
+
+        # new_count: BID_ITEMS.first_collected_at 기준
+        new_rows = conn.execute("""
+            SELECT date(first_collected_at) AS date, COUNT(*) AS new_count
+            FROM BID_ITEMS
+            WHERE date(first_collected_at) >= ?
+            GROUP BY date(first_collected_at)
+        """, (start_date,)).fetchall()
+        new_by_date = {r["date"]: r["new_count"] for r in new_rows}
+
+        # total_count: DAILY_SNAPSHOT 합산
+        total_rows = conn.execute("""
+            SELECT snapshot_date AS date, SUM(total_count) AS total_count
+            FROM DAILY_SNAPSHOT
+            WHERE snapshot_date >= ?
+            GROUP BY snapshot_date
+            ORDER BY snapshot_date
+        """, (start_date,)).fetchall()
+
+        # closed_count 역산: delta = total(t) - total(t-1); closed = new(t) - delta → max(0, ...)
+        data = []
+        prev_total = None
+        for r in total_rows:
+            d = r["date"]
+            total = r["total_count"] or 0
+            new_c = new_by_date.get(d, 0)
+            if prev_total is None:
+                closed_c = 0  # 시작일은 델타 계산 불가
+            else:
+                delta = total - prev_total
+                closed_c = max(0, new_c - delta)
+            data.append({
+                "date": d,
+                "new_count": new_c,
+                "closed_count": closed_c,
+                "total_count": total,
+            })
+            prev_total = total
+
+        return jsonify({"period": period, "data": data})
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
