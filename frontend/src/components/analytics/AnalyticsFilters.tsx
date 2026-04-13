@@ -11,7 +11,7 @@ const REGIONS = [
   "울산광역시",
   "세종특별자치시",
 ];
-const USAGE_TYPES = ["상가용및업무용건물", "용도복합용건물"];
+const USAGE_TYPES = ["용도복합용건물", "상가용및업무용건물"];
 
 export interface AnalyticsFilterState {
   regions: string[];
