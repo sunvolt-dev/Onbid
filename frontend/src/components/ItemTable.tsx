@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
 import { fmtAmt, dLabel, daysLeft } from "@/utils/format";
+import RatioPill from "@/components/ui/RatioPill";
 
 const PAGE_SIZE = 50;
 
@@ -11,22 +12,6 @@ interface Props {
   items: BidItem[];
   filter: FilterState;
   onSortChange: (sort: FilterState["sort"]) => void;
-}
-
-function RatioPill({ ratio }: { ratio: number }) {
-  const cls =
-    ratio < 60
-      ? "bg-hot-bg text-hot-fg"
-      : ratio < 70
-      ? "bg-mid-bg text-mid-fg"
-      : "bg-ok-bg text-ok-fg";
-  return (
-    <span
-      className={`inline-block ${cls} rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums`}
-    >
-      {ratio.toFixed(1)}%
-    </span>
-  );
 }
 
 function DeadlineLabel({ dt, pvct }: { dt: string; pvct: boolean }) {
