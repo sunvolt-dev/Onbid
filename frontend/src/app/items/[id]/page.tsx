@@ -1,3 +1,4 @@
+// frontend/src/app/items/[id]/page.tsx
 "use client";
 
 import { use, useEffect, useState } from "react";
@@ -6,22 +7,16 @@ import Link from "next/link";
 import { fetchItem, toggleBookmark, refreshItem, checkItem } from "@/api";
 import type { BidItem } from "@/types";
 import HeroSection from "@/components/detail/HeroSection";
-import TabInfo from "@/components/detail/TabInfo";
-import TabHistory from "@/components/detail/TabHistory";
-import TabProfit from "@/components/detail/TabProfit";
-import TabTenant from "@/components/detail/TabTenant";
-import TabRisk from "@/components/detail/TabRisk";
-import TabChecklist from "@/components/detail/TabChecklist";
+import TabPricing from "@/components/detail/TabPricing";
+import TabRights from "@/components/detail/TabRights";
+import TabField from "@/components/detail/TabField";
 
-type TabKey = "info" | "history" | "profit" | "tenant" | "risk" | "checklist";
+type TabKey = "pricing" | "rights" | "field";
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "info", label: "📋 기본정보" },
-  { key: "history", label: "📉 유찰내역" },
-  { key: "profit", label: "📈 수익성 분석" },
-  { key: "tenant", label: "🏠 임차인 정보" },
-  { key: "risk", label: "⚠️ 리스크 지표" },
-  { key: "checklist", label: "✅ 점검 체크리스트" },
+  { key: "pricing", label: "💰 가격 분석" },
+  { key: "rights", label: "⚖️ 권리 분석" },
+  { key: "field", label: "📍 현장 정보" },
 ];
 
 export default function ItemDetailPage({
@@ -34,7 +29,7 @@ export default function ItemDetailPage({
   const [item, setItem] = useState<BidItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("info");
+  const [activeTab, setActiveTab] = useState<TabKey>("pricing");
   const [refreshing, setRefreshing] = useState(false);
   const [closed, setClosed] = useState(false);
 
@@ -42,7 +37,6 @@ export default function ItemDetailPage({
     fetchItem(id)
       .then((data) => {
         setItem(data);
-        // 상세 진입 시 온비드에 아직 유효한지 백그라운드 체크
         checkItem(id)
           .then((res) => {
             if (!res.alive) setClosed(true);
@@ -140,12 +134,12 @@ export default function ItemDetailPage({
 
         {/* 탭 */}
         <div className="bg-surface shadow-card rounded-xl overflow-hidden">
-          <div className="flex border-b border-border overflow-x-auto">
+          <div className="flex border-b border-border">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-3 text-sm whitespace-nowrap transition-colors ${
+                className={`flex-1 px-3 py-3 text-sm whitespace-nowrap transition-colors ${
                   activeTab === tab.key
                     ? "border-b-2 border-primary text-primary font-semibold"
                     : "text-text-3 hover:text-text-1 hover:bg-surface-muted"
@@ -157,16 +151,9 @@ export default function ItemDetailPage({
           </div>
 
           <div className="p-4 md:p-6">
-            {activeTab === "info" && <TabInfo item={item} />}
-            {activeTab === "history" && (
-              <TabHistory id={item.cltr_mng_no} apslEvlAmt={item.apsl_evl_amt} />
-            )}
-            {activeTab === "profit" && <TabProfit item={item} />}
-            {activeTab === "tenant" && (
-              <TabTenant id={item.cltr_mng_no} prptDivNm={item.prpt_div_nm} />
-            )}
-            {activeTab === "risk" && <TabRisk item={item} />}
-            {activeTab === "checklist" && <TabChecklist id={item.cltr_mng_no} />}
+            {activeTab === "pricing" && <TabPricing item={item} />}
+            {activeTab === "rights" && <TabRights item={item} />}
+            {activeTab === "field" && <TabField item={item} />}
           </div>
         </div>
       </div>
