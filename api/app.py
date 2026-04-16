@@ -76,7 +76,7 @@ def get_items():
         conditions.append("cltr_usg_scls_nm = ?")
         params.append(usg_scls)
 
-    where = " AND ".join(conditions)
+    where = " AND ".join(conditions) if conditions else "1=1"
     params.append(limit)
 
     conn = get_db()
@@ -604,7 +604,7 @@ def analytics_summary():
 
         return jsonify({
             "total_items": total,
-            "total_delta": total - yesterday_total if yesterday_total else None,
+            "total_delta": total - yesterday_total if yesterday_total is not None else None,
             "avg_ratio_pct": avg_ratio,
             "by_region": [dict(r) for r in by_region],
             "by_usage_type": [dict(r) for r in by_usage],
@@ -813,7 +813,6 @@ def analytics_discount_by_region():
         # MOLIT_TRADE_CACHE.deal_ymd = YYYYMM, lawd_cd 앞 2자리 = 시도
         from datetime import datetime
         today = datetime.today()
-        six_months_ago = f"{today.year}{today.month:02d}"
         # 6개월 전 YYYYMM 계산
         y, m = today.year, today.month - 6
         while m <= 0:

@@ -11,16 +11,14 @@ import DecisionBanner, { type DecisionStatus } from "./DecisionBanner";
 const STORAGE_KEY_PREFIX = "onbid_memo_";
 
 const TIER_LABELS: Record<number, string> = {
-  0: "같은 건물 (지번 매칭)",
-  1: "같은 읍면동 + 같은 건물 + 유사면적",
-  2: "같은 읍면동 + 유사면적",
-  3: "같은 시군구 + 유사면적",
+  0: "같은 건물 (지번 완전일치)",
+  1: "같은 건물 (건물명+면적)",
 };
 
 const STATUS_MSG: Record<string, { icon: string; title: string; desc: string }> = {
   no_mapping:    { icon: "🗺️", title: "법정동코드 매핑 없음",   desc: "해당 지역의 법정동코드를 찾을 수 없습니다." },
   not_supported: { icon: "🏢", title: "미지원 용도",             desc: "현재 오피스텔과 업무시설만 시세 조회를 지원합니다." },
-  no_data:       { icon: "📭", title: "실거래 데이터 없음",     desc: "최근 6개월간 유사 조건의 거래 내역이 없습니다." },
+  no_data:       { icon: "📭", title: "같은 건물 실거래 없음",   desc: "최근 6개월간 같은 건물의 실거래가 없어 시세를 표시하지 않습니다. (주변 평균가는 오차가 커 신뢰도가 낮아 제외)" },
   api_error:     { icon: "⚠️", title: "API 오류",               desc: "국토교통부 API 호출 중 오류가 발생했습니다." },
 };
 
@@ -280,8 +278,20 @@ function MarketSection({ market, item }: { market: MarketPriceResponse; item: Bi
           </div>
         </div>
 
-        {summary?.latest_deal && (
-          <p className="text-[10px] text-text-4 text-right">최근 거래: {summary.latest_deal}</p>
+        {(summary?.avg_unit_price != null && summary?.effective_area_sqm != null) && (
+          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] text-text-4 font-mono">
+              추정시세 = {summary.avg_unit_price.toFixed(1)}만/㎡ × {summary.effective_area_sqm.toFixed(1)}㎡
+              {summary.assumed_exclusive_ratio != null && (
+                <span className="text-text-4/70">
+                  {" "}(공급면적 × {Math.round(summary.assumed_exclusive_ratio * 100)}% = 추정 전용면적)
+                </span>
+              )}
+            </p>
+            {summary.latest_deal && (
+              <p className="text-[10px] text-text-4">최근 거래: {summary.latest_deal}</p>
+            )}
+          </div>
         )}
       </div>
 

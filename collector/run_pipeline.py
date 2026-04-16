@@ -4,9 +4,10 @@ run_pipeline.py
 온비드 수집 파이프라인 오케스트레이터
 
 실행 순서:
-  1단계: onbid_list_collector.py   — 물건 목록 수집
-  2단계: onbid_detail_collector.py — 물건 상세 수집
-  3단계: onbid_bid_collector.py    — 입찰정보 수집
+  1단계: onbid_list_collector.py      — 물건 목록 수집
+  2단계: onbid_detail_collector.py    — 물건 상세 수집
+  3단계: onbid_bid_collector.py       — 입찰정보 수집
+  4단계: molit_batch_prefetch.py      — 실거래가 사전 수집
 
 중단 조건:
   - 1단계 실행 후 COLLECTION_LOG에 오늘 성공한 그룹이 하나도 없으면 중단
@@ -179,6 +180,9 @@ def main():
 
         # 3단계: 입찰정보 수집
         run_step("onbid_bid_collector.py")
+
+        # 4단계: 국토교통부 실거래가 사전 수집
+        run_step("molit_batch_prefetch.py")
 
         # 일일 스냅샷 기록 (분석 트렌드용)
         write_daily_snapshot()

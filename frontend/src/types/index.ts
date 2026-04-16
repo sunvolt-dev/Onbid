@@ -115,6 +115,8 @@ export interface MarketPriceResponse {
     avg_unit_price: number | null;
     estimated_market_price_won: number | null;
     latest_deal: string | null;
+    effective_area_sqm?: number | null;
+    assumed_exclusive_ratio?: number | null;
   } | null;
   comparison: {
     market_vs_bid_pct: number;

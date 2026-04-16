@@ -64,13 +64,33 @@ USG_TO_PRIMARY = {
     "주/상용건물":  ["commercial", "rowhouse"],
 }
 
+# 온비드 용도소분류 → 매칭 가능한 api_type 화이트리스트.
+# 동일 건물군만 비교하기 위해 용도가 어긋나는 타입은 평균에서 배제한다.
+# (예: 오피스텔 물건인데 근린생활(commercial) 단가가 섞여 평균이 2~5배로 튀는 현상을 차단)
+USG_TO_ALLOWED_TYPES = {
+    "오피스텔":     ["officetel"],
+    "업무시설":     ["officetel", "commercial"],
+    "주/상용건물":  ["commercial", "rowhouse", "officetel"],
+}
+
+# 온비드 bld_sqms(건물면적=공급/계약면적) → 전용면적 추정 비율.
+# MOLIT 실거래가는 전용면적(excluUseAr) 기준이므로 보정 없이 비교/계산하면
+# 추정 시세가 체계적으로 50~100% 과대평가된다.
+# 값은 용도별 일반 전용률 근사치(오피스텔 ~50%, 업무/상업 ~55%).
+EXCLUSIVE_RATIO = {
+    "오피스텔":     0.50,
+    "업무시설":     0.55,
+    "주/상용건물":  0.55,
+}
+DEFAULT_EXCLUSIVE_RATIO = 0.55
+
 ALL_API_TYPES = ["officetel", "commercial", "apartment", "rowhouse", "detached"]
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "onbid.db")
 CACHE_EXPIRE_DAYS = 30
 AREA_TOLERANCE = 0.3       # 면적 ±30%
 SLEEP_SEC = 0.2            # API 호출 간 대기
-LOOKBACK_MONTHS = 6        # 조회할 과거 개월 수
+LOOKBACK_MONTHS = 24       # 조회할 과거 개월 수 (개별 건물 거래는 1~3년에 1건 수준이라 24개월로 확장)
 
 
 # ─────────────────────────────────────────
@@ -325,50 +345,93 @@ def _area_match(onbid_area: float, trade_area: float) -> bool:
     return (1 - AREA_TOLERANCE) <= ratio <= (1 + AREA_TOLERANCE)
 
 
-def _jibun_match(a: str | None, b: str | None) -> bool:
-    """지번 매칭. 본번이 같으면 매칭 (같은 필지).
+def _split_jibun(j: str | None) -> tuple[str | None, str]:
+    """'302-8' → ('302', '8'), '302' → ('302', ''), None → (None, '')"""
+    if not j:
+        return None, ""
+    parts = j.split("-", 1)
+    return parts[0], (parts[1] if len(parts) > 1 else "")
 
-    "302-8" vs "302-8" → True (정확 매칭)
-    "302-8" vs "302"   → True (본번 매칭 — 부번 0 생략 케이스)
-    "302-8" vs "302-3" → True (같은 본번, 같은 필지 가능성 높음)
-    "302-8" vs "303-1" → False (본번 다름)
+
+def _dong_match(onbid_dong: str | None, molit_dong: str | None) -> bool:
+    """읍면동명 매칭.
+
+    MOLIT `umdNm`은 읍/면 단위의 경우 "기장읍 내리"처럼 리까지 합쳐서 오고,
+    온비드 `lctn_emd_nm`은 "기장읍"만 오는 경우가 있다.
+    따라서 완전일치 외에 prefix 매칭도 허용한다.
+    """
+    if not onbid_dong or not molit_dong:
+        return False
+    a = onbid_dong.strip()
+    b = molit_dong.strip()
+    if a == b:
+        return True
+    # MOLIT이 "읍/면 + 리" 형태이고 온비드가 읍/면만 있는 경우
+    if (a.endswith("읍") or a.endswith("면")) and b.startswith(a + " "):
+        return True
+    return False
+
+
+def _jibun_match(a: str | None, b: str | None) -> bool:
+    """지번 완전일치 매칭. 본번+부번이 모두 같아야 같은 필지/건물로 인정.
+
+    본번-only 비교는 전혀 다른 건물을 같은 건물로 오인하는 오매칭이 많아
+    (측정 결과 21.7% 히트 중 58%가 부번 불일치) 완전일치 방식으로 조였다.
+
+    "302-8" vs "302-8" → True   (정확 매칭)
+    "302"   vs "302"   → True   (둘 다 부번 없는 본번지)
+    "302-8" vs "302"   → False  (부번 유무 다름 — 다른 필지)
+    "302-8" vs "302-3" → False  (부번 다름 — 인접 필지지만 다른 건물)
     """
     if not a or not b:
         return False
-    bonbun_a = a.split("-")[0]
-    bonbun_b = b.split("-")[0]
-    return bonbun_a == bonbun_b
+    bon_a, bu_a = _split_jibun(a)
+    bon_b, bu_b = _split_jibun(b)
+    return bon_a == bon_b and bu_a == bu_b
 
 
 def match_trades(conn: sqlite3.Connection, lawd_cd: str,
                  dong_nm: str, bldg_name: str | None,
                  area: float | None,
-                 jibun: str | None = None) -> dict:
+                 jibun: str | None = None,
+                 api_types: list[str] | None = None,
+                 exclusive_ratio: float | None = None) -> dict:
     """캐시된 거래 데이터에서 3단계 폴백으로 유사 거래를 찾는다.
-    모든 API 타입의 캐시를 통합 검색한다.
+
+    Args:
+        api_types: 매칭 대상 api_type 화이트리스트. None이면 전체.
+        exclusive_ratio: 추정 시세 계산 시 사용할 전용률 (메타데이터용).
+        area: 이미 전용면적으로 보정된 값이어야 한다.
 
     Returns:
         {
             "status": "ok" | "no_data",
-            "match_tier": 1~3,
+            "match_tier": 0~3,
             "match_tier_label": str,
             "transactions": [...],
-            "summary": { avg_unit_price, estimated_market_price, latest_deal },
+            "summary": { avg_unit_price, estimated_market_price_won, ... },
             "comparison": None  (API 엔드포인트에서 채움)
         }
     """
     months = get_deal_months()
 
-    # 모든 API 타입의 캐시를 통합 검색
+    # api_type 필터: 용도와 어긋나는 타입은 제외 (예: 오피스텔 물건에 상업용 단가 섞이는 것 차단)
+    type_filter_sql = ""
+    type_params: tuple = ()
+    if api_types:
+        type_filter_sql = " AND api_type IN ({})".format(",".join("?" for _ in api_types))
+        type_params = tuple(api_types)
+
     all_trades = conn.execute(
         """SELECT dong_nm, jibun, bldg_nm, exclu_use_ar, deal_amount,
                   floor, build_year, deal_day, deal_ymd, unit_price
            FROM MOLIT_TRADE_CACHE
-           WHERE lawd_cd=? AND deal_ymd IN ({})
+           WHERE lawd_cd=? AND deal_ymd IN ({}){}
            ORDER BY deal_ymd DESC, deal_day DESC""".format(
-            ",".join("?" for _ in months)
+            ",".join("?" for _ in months),
+            type_filter_sql,
         ),
-        (lawd_cd, *months),
+        (lawd_cd, *months, *type_params),
     ).fetchall()
 
     if not all_trades:
@@ -380,58 +443,50 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
 
     trades = [dict(zip(cols, row)) for row in all_trades]
 
-    # Tier 0: 같은 읍면동 + 같은 지번 (면적 제한 없음 — 같은 건물 확정)
+    # Tier 0: 같은 읍면동 + 지번 완전일치 (같은 건물 확정)
     if jibun:
         tier0 = [
             t for t in trades
-            if t["dong_nm"] == dong_nm
+            if _dong_match(dong_nm, t["dong_nm"])
             and _jibun_match(jibun, t.get("jibun"))
         ]
         if tier0:
-            return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area)
+            return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area, exclusive_ratio)
 
     # Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±30%
+    # (지번 파싱 실패한 도로명주소 케이스 구명줄)
     tier1 = [
         t for t in trades
-        if t["dong_nm"] == dong_nm
+        if _dong_match(dong_nm, t["dong_nm"])
         and _name_match(bldg_name, t["bldg_nm"])
         and (area is None or _area_match(area, t["exclu_use_ar"]))
     ]
     if tier1:
-        return _build_result(tier1, 1, "같은 읍면동 + 같은 건물 + 유사면적", area)
+        return _build_result(tier1, 1, "같은 읍면동 + 같은 건물 + 유사면적", area, exclusive_ratio)
 
-    # Tier 2: 같은 읍면동 + 면적 ±30%
-    tier2 = [
-        t for t in trades
-        if t["dong_nm"] == dong_nm
-        and (area is None or _area_match(area, t["exclu_use_ar"]))
-    ]
-    if tier2:
-        return _build_result(tier2, 2, "같은 읍면동 + 유사면적", area)
-
-    # Tier 3: 같은 시군구(전체) + 면적 ±30%
-    tier3 = [
-        t for t in trades
-        if area is None or _area_match(area, t["exclu_use_ar"])
-    ]
-    if tier3:
-        return _build_result(tier3, 3, "같은 시군구 + 유사면적", area)
-
+    # 읍면동/시군구 평균 기반 Tier 2, 3은 제거됨.
+    # 전혀 다른 건물의 거래를 평균에 섞어 시세를 50~100% 왜곡하는 원인이 되어
+    # "같은 건물 실거래가 없으면 표시하지 않는다"는 정책으로 전환했다.
     return {"status": "no_data", "match_tier": None, "transactions": [],
             "summary": None, "comparison": None}
 
 
 def _build_result(trades: list[dict], tier: int, label: str,
-                  onbid_area: float | None) -> dict:
-    """매칭된 거래 목록으로 응답 객체를 구성."""
-    # ㎡당 단가 계산
+                  effective_area: float | None,
+                  exclusive_ratio: float | None) -> dict:
+    """매칭된 거래 목록으로 응답 객체를 구성.
+
+    effective_area: 전용면적 단위로 보정된 온비드 면적 (㎡).
+                    MOLIT 단가(전용㎡당 만원)와 곱해 실제 시세에 가깝게 추정한다.
+    """
+    # ㎡당 단가 계산 (만원/전용㎡)
     unit_prices = [t["unit_price"] for t in trades if t["unit_price"]]
     avg_up = round(sum(unit_prices) / len(unit_prices), 1) if unit_prices else None
 
-    # 추정 시세 (㎡당 평균단가 × 온비드 물건 면적)
+    # 추정 시세 = 평균 전용㎡ 단가 × 보정된 전용면적
     estimated = None
-    if avg_up and onbid_area:
-        estimated = round(avg_up * onbid_area * 10000)  # 만원 → 원
+    if avg_up and effective_area:
+        estimated = round(avg_up * effective_area * 10000)  # 만원 → 원
 
     # 최근 거래월
     latest = None
@@ -462,6 +517,8 @@ def _build_result(trades: list[dict], tier: int, label: str,
             "avg_unit_price": avg_up,
             "estimated_market_price_won": estimated,
             "latest_deal": latest,
+            "effective_area_sqm": effective_area,
+            "assumed_exclusive_ratio": exclusive_ratio,
         },
         "comparison": None,  # API 엔드포인트에서 입찰가 비교 추가
     }
@@ -509,6 +566,13 @@ def get_market_price(conn: sqlite3.Connection,
     primary_types = USG_TO_PRIMARY.get(usg_scls, ["officetel", "commercial"])
     secondary_types = [t for t in ALL_API_TYPES if t not in primary_types]
 
+    # 전용면적 보정: 온비드 bld_sqms(공급/계약면적)을 MOLIT 전용면적 단위로 맞춘다.
+    ratio = EXCLUSIVE_RATIO.get(usg_scls, DEFAULT_EXCLUSIVE_RATIO)
+    effective_area = bld_sqms * ratio if bld_sqms else None
+
+    # 매칭 대상 api_type 화이트리스트: 용도와 무관한 타입은 평균에서 배제.
+    allowed_types = USG_TO_ALLOWED_TYPES.get(usg_scls)
+
     # 3a) 우선 API 수집
     api_called = 0
     for ym in months:
@@ -519,7 +583,8 @@ def get_market_price(conn: sqlite3.Connection,
                 time.sleep(SLEEP_SEC)
 
     # 3b) 우선 API 결과로 매칭 시도
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms, jibun)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, effective_area,
+                          jibun, api_types=allowed_types, exclusive_ratio=ratio)
 
     if result["status"] == "ok" and result.get("match_tier") in (0, 1, 2):
         log.info(f"우선 API {api_called}콜로 Tier {result['match_tier']} 매칭 ({lawd_cd})")
@@ -536,8 +601,9 @@ def get_market_price(conn: sqlite3.Connection,
     if api_called > 0:
         log.info(f"전체 API {api_called}콜 사용 ({lawd_cd})")
 
-    # 3d) 전체 캐시로 재매칭
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms, jibun)
+    # 3d) 전체 캐시로 재매칭 (화이트리스트는 유지)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, effective_area,
+                          jibun, api_types=allowed_types, exclusive_ratio=ratio)
 
     return result
 
