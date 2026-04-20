@@ -17,20 +17,27 @@ BID_ITEMS(물건목록)에서 cltrMngNo + pbctCdtnNo 를 읽어
 """
 
 import os
+import sys
 import sqlite3
+import urllib.parse
 import requests
 import logging
 import time
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+# 프로젝트 루트를 sys.path에 추가
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from utils import to_int, to_float, to_str, now_str, to_list
+from db.schema_bid import init_bid_db
+
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
-SERVICE_KEY = os.environ["ONBID_API_KEY"]
-BID_URL     = "https://apis.data.go.kr/B010003/OnbidCltrBidDtlSrvc/getCltrBidInf"
+SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
+BID_URL     = "https://apis.data.go.kr/B010003/OnbidCltrBidDtlSrvc2/getCltrBidInf2"
 DB_PATH     = "onbid.db"
 
 SLEEP_SEC     = 0.15   # API 10 tps 제한 → 호출 간 대기(초)
@@ -46,92 +53,6 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────
-# 유틸
-# ─────────────────────────────────────────
-def to_int(v):
-    try:
-        return int(float(v)) if v not in (None, "", "null") else None
-    except Exception:
-        return None
-
-def to_float(v):
-    try:
-        return float(v) if v not in (None, "", "null") else None
-    except Exception:
-        return None
-
-def to_str(v):
-    return str(v).strip() if v not in (None, "", "null") else None
-
-def now_str():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-def to_list(v):
-    """API 응답 배열 필드를 안전하게 리스트로 변환."""
-    if not v:
-        return []
-    if isinstance(v, dict):
-        return [v]
-    if isinstance(v, list):
-        return v
-    return []
-
-
-# ─────────────────────────────────────────
-# DB 초기화
-# ─────────────────────────────────────────
-def init_bid_db(conn: sqlite3.Connection):
-    conn.executescript("""
-        -- ── 회차별 입찰정보 ──────────────────────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_QUAL (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            cltr_mng_no             TEXT    NOT NULL REFERENCES BID_ITEMS(cltr_mng_no),
-            pbct_cdtn_no            INTEGER,                -- 공매조건번호
-            proc_anct_nm            TEXT,                   -- 공고명
-            bid_seq                 INTEGER,                -- 입찰 회차 번호
-            bid_strt_dttm           TEXT,                   -- 입찰 시작 일시
-            bid_end_dttm            TEXT,                   -- 입찰 마감 일시
-            bid_opnn_dttm           TEXT,                   -- 개찰 일시
-            bid_mthd_nm             TEXT,                   -- 입찰 방법명 (온라인/오프라인/혼합)
-            bid_particp_cstgr_nm    TEXT,                   -- 입찰 참여 범주명 (개인/법인/기관)
-            bid_particp_lmtn_nm     TEXT,                   -- 입찰 참여 제한 조건명
-            min_bd_prc              INTEGER,                -- 최소 입찰가 (원)
-            bd_prc_dcrmn_amount     INTEGER,                -- 입찰가 감소액 (원, 회차마다 내려가는 금액)
-            bid_grnt_prc            INTEGER,                -- 입찰 보증금 (원)
-            bid_grnt_dcsn           TEXT,                   -- 보증금 결정 방식 (예: 정가의 10%)
-            bid_rsltn_mthd_nm       TEXT,                   -- 낙찰 방법명 (최고가 우선/최저가 우선/복합평가)
-            acml_fail_cnt           INTEGER,                -- 유찰 누적 횟수
-            prv_bid_hist_rcnt       INTEGER,                -- 이전 입찰 내역 건수
-            collb_bid_possbl_yn     TEXT,                   -- 공동입찰 가능여부 (Y/N)
-            aprxy_bid_possbl_yn     TEXT,                   -- 대리입찰 가능여부 (Y/N)
-            elctrn_grnt_srv_yn      TEXT                    -- 전자보증서 가능여부 (Y/N)
-        );
-        CREATE INDEX IF NOT EXISTS idx_qual_cltr ON BID_QUAL(cltr_mng_no);
-
-        -- ── 이전 입찰 내역 (BID_QUAL 하위) ──────────────────────────────────────
-        CREATE TABLE IF NOT EXISTS BID_HIST (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            bid_qual_id     INTEGER NOT NULL REFERENCES BID_QUAL(id),
-            cltr_mng_no     TEXT    NOT NULL,               -- 물건관리번호 (조회 편의용)
-            prv_bid_seq     INTEGER,                        -- 이전 입찰 회차
-            prv_bid_rslt    TEXT,                           -- 이전 입찰 결과 (유찰/낙찰/취소)
-            prv_bid_fail_cnt INTEGER                        -- 해당 회차 실패 횟수
-        );
-        CREATE INDEX IF NOT EXISTS idx_hist_qual ON BID_HIST(bid_qual_id);
-        CREATE INDEX IF NOT EXISTS idx_hist_cltr ON BID_HIST(cltr_mng_no);
-    """)
-
-    # BID_ITEMS에 입찰정보 조회 추적 컬럼 추가 (마이그레이션)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(BID_ITEMS)")}
-    if "bid_fetched_at" not in existing_cols:
-        conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN bid_fetched_at TEXT")
-        log.info("마이그레이션: BID_ITEMS.bid_fetched_at 컬럼 추가")
-
-    conn.commit()
-    log.info("입찰정보 DB 초기화 완료")
 
 
 # ─────────────────────────────────────────
@@ -163,14 +84,20 @@ def fetch_bid(cltr_mng_no: str, pbct_cdtn_no) -> dict | None:
         return None
 
     try:
-        # 실제 응답 구조: { "result": { "resultCode": "00", "resultMsg": "..." }, ... }
-        result_code = data.get("result", {}).get("resultCode", "??")
+        # 응답 구조가 두 가지:
+        #   구형: { "result": { "resultCode": "00" }, ... }
+        #   신형: { "header": { "resultCode": "00" }, "body": { "items": ... } }
+        result_code = (
+            data.get("result", {}).get("resultCode")
+            or data.get("header", {}).get("resultCode")
+            or "??"
+        )
 
         if result_code == "03":
             # NODATA_ERROR — 입찰 진행 중이 아닌 물건 (종료/낙찰). 조용히 스킵
             return None
         if result_code != "00":
-            log.warning(f"  [{cltr_mng_no}] 응답코드 {result_code}: {data.get('result', {}).get('resultMsg')}")
+            log.warning(f"  [{cltr_mng_no}] 응답코드 {result_code}")
             return None
 
         return data
@@ -209,10 +136,36 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
     """
     _clear_sub_tables(conn, cltr_mng_no)
 
-    proc_anct_nm = to_str(data.get("procAnctNm"))   # 공고명 (최상위)
-    pbct_cdtn_no = to_int(data.get("pbctCdtnNo"))
+    # 응답 구조 분기: 구형(prvdBidDtls) vs 신형(body.items.item)
+    raw = data
+    if "body" in data:
+        items_raw = (data.get("body") or {}).get("items", {}).get("item")
+        if items_raw:
+            raw = to_list(items_raw)[0] if isinstance(items_raw, list) else items_raw
 
-    for dtl in to_list(data.get("prvdBidDtls")):
+    dtls = raw.get("prvdBidDtls")
+    proc_anct_nm = to_str(raw.get("procAnctNm") or raw.get("onbidPbancNm"))
+    pbct_cdtn_no = to_int(raw.get("pbctCdtnNo"))
+
+    # 신형 구조: cseqBidInfClgList(회차별 입찰정보)를 prvdBidDtls 형식으로 변환
+    if not dtls and raw.get("cseqBidInfClgList"):
+        dtls = []
+        for seq in to_list(raw.get("cseqBidInfClgList")):
+            dtls.append({
+                "bidSeq":              seq.get("pbctNsq"),
+                "bidStrtDttm":         seq.get("cltrBidBgngDt"),
+                "bidEndDttm":          seq.get("cltrBidEndDt"),
+                "bidOpnnDttm":         seq.get("cltrOpbdDt"),
+                "bidMthdNm":           seq.get("bidDivNm"),
+                "minBdPrc":            seq.get("lowstBidPrcIndctCont"),
+                "acmlFailCnt":         raw.get("usbdNft"),
+            })
+        # prcnBidClgList를 BID_HIST로 매핑
+        prcn_list = to_list(raw.get("prcnBidClgList"))
+
+    dtls = to_list(dtls)
+
+    for dtl in dtls:
         # BID_QUAL INSERT
         cursor = conn.execute("""
             INSERT INTO BID_QUAL (
@@ -257,7 +210,10 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
         bid_qual_id = cursor.lastrowid  # 방금 INSERT된 BID_QUAL.id
 
         # BID_HIST INSERT (이전 입찰 내역)
-        for hist in to_list(dtl.get("prvdBidHists")):
+        # 구형: prvdBidHists / 신형: prcnBidClgList (최초 1회만)
+        hist_items = to_list(dtl.get("prvdBidHists"))
+
+        for hist in hist_items:
             conn.execute("""
                 INSERT INTO BID_HIST
                     (bid_qual_id, cltr_mng_no, prv_bid_seq, prv_bid_rslt, prv_bid_fail_cnt)
@@ -269,6 +225,27 @@ def save_bid(conn: sqlite3.Connection, cltr_mng_no: str, data: dict):
                 to_str(hist.get("prvBidRslt")),
                 to_int(hist.get("prvBidFailCnt")),
             ))
+
+    # 신형 prcnBidClgList → BID_HIST (첫 번째 BID_QUAL에 연결)
+    if not raw.get("prvdBidDtls") and raw.get("prcnBidClgList"):
+        first_qual = conn.execute(
+            "SELECT id FROM BID_QUAL WHERE cltr_mng_no = ? ORDER BY bid_seq ASC LIMIT 1",
+            (cltr_mng_no,),
+        ).fetchone()
+        if first_qual:
+            fq_id = first_qual[0]
+            for prcn in to_list(raw.get("prcnBidClgList")):
+                conn.execute("""
+                    INSERT INTO BID_HIST
+                        (bid_qual_id, cltr_mng_no, prv_bid_seq, prv_bid_rslt, prv_bid_fail_cnt)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    fq_id,
+                    cltr_mng_no,
+                    to_int(prcn.get("pbctNsq")),
+                    to_str(prcn.get("pbctStatNm")),
+                    None,
+                ))
 
     # 입찰정보 조회 완료 시각 기록
     conn.execute(
@@ -293,7 +270,7 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE status = 'active'
+            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
             ORDER BY ratio_pct ASC
         """
@@ -301,7 +278,7 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE status = 'active'
+            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
               AND bid_fetched_at IS NULL
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
             ORDER BY ratio_pct ASC
@@ -314,59 +291,60 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
 # ─────────────────────────────────────────
 def main():
     conn = sqlite3.connect(DB_PATH)
-    init_bid_db(conn)
+    try:
+        init_bid_db(conn)
 
-    pending = get_pending_items(conn, force=FORCE_REFETCH)
-    total   = len(pending)
+        pending = get_pending_items(conn, force=FORCE_REFETCH)
+        total   = len(pending)
 
-    if total == 0:
-        log.info("입찰정보 조회 대상 물건 없음 (모두 최신 상태)")
+        if total == 0:
+            log.info("입찰정보 조회 대상 물건 없음 (모두 최신 상태)")
+            return
+
+        log.info(f"입찰정보 조회 대상: {total}건 시작")
+        log.info("=" * 55)
+
+        success = 0
+        fail    = 0
+
+        for idx, (cltr_mng_no, pbct_cdtn_no) in enumerate(pending, 1):
+            log.info(f"[{idx}/{total}] {cltr_mng_no} (공매조건번호={pbct_cdtn_no})")
+
+            data = fetch_bid(cltr_mng_no, pbct_cdtn_no)
+
+            if data:
+                save_bid(conn, cltr_mng_no, data)
+
+                qual_cnt = conn.execute(
+                    "SELECT COUNT(*) FROM BID_QUAL WHERE cltr_mng_no=?", (cltr_mng_no,)
+                ).fetchone()[0]
+                hist_cnt = conn.execute(
+                    "SELECT COUNT(*) FROM BID_HIST WHERE cltr_mng_no=?", (cltr_mng_no,)
+                ).fetchone()[0]
+
+                log.info(f"  → 저장 완료 | 입찰회차:{qual_cnt} 이전입찰내역:{hist_cnt}")
+                success += 1
+            else:
+                # NODATA 포함 실패 물건도 bid_fetched_at 기록 → 다음 실행 시 재시도 방지
+                conn.execute(
+                    "UPDATE BID_ITEMS SET bid_fetched_at = ? WHERE cltr_mng_no = ?",
+                    (now_str(), cltr_mng_no),
+                )
+                conn.commit()
+                fail += 1
+
+            time.sleep(SLEEP_SEC)
+
+            if idx % BATCH_SIZE == 0:
+                conn.commit()
+                log.info(f"  ── 중간 저장 ({idx}/{total}건 처리됨) ──")
+
+        conn.commit()
+
+        log.info("=" * 55)
+        log.info(f"입찰정보 조회 완료 | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
+    finally:
         conn.close()
-        return
-
-    log.info(f"입찰정보 조회 대상: {total}건 시작")
-    log.info("=" * 55)
-
-    success = 0
-    fail    = 0
-
-    for idx, (cltr_mng_no, pbct_cdtn_no) in enumerate(pending, 1):
-        log.info(f"[{idx}/{total}] {cltr_mng_no} (공매조건번호={pbct_cdtn_no})")
-
-        data = fetch_bid(cltr_mng_no, pbct_cdtn_no)
-
-        if data:
-            save_bid(conn, cltr_mng_no, data)
-
-            qual_cnt = conn.execute(
-                "SELECT COUNT(*) FROM BID_QUAL WHERE cltr_mng_no=?", (cltr_mng_no,)
-            ).fetchone()[0]
-            hist_cnt = conn.execute(
-                "SELECT COUNT(*) FROM BID_HIST WHERE cltr_mng_no=?", (cltr_mng_no,)
-            ).fetchone()[0]
-
-            log.info(f"  → 저장 완료 | 입찰회차:{qual_cnt} 이전입찰내역:{hist_cnt}")
-            success += 1
-        else:
-            # NODATA 포함 실패 물건도 bid_fetched_at 기록 → 다음 실행 시 재시도 방지
-            conn.execute(
-                "UPDATE BID_ITEMS SET bid_fetched_at = ? WHERE cltr_mng_no = ?",
-                (now_str(), cltr_mng_no),
-            )
-            conn.commit()
-            fail += 1
-
-        time.sleep(SLEEP_SEC)
-
-        if idx % BATCH_SIZE == 0:
-            conn.commit()
-            log.info(f"  ── 중간 저장 ({idx}/{total}건 처리됨) ──")
-
-    conn.commit()
-    conn.close()
-
-    log.info("=" * 55)
-    log.info(f"입찰정보 조회 완료 | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
 
 
 if __name__ == "__main__":
