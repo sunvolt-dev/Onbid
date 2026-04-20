@@ -19,6 +19,7 @@ BID_ITEMS(물건목록)에서 cltrMngNo + pbctCdtnNo 를 읽어
 import os
 import sys
 import sqlite3
+import urllib.parse
 import requests
 import logging
 import time
@@ -35,8 +36,8 @@ from db.schema_bid import init_bid_db
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
-SERVICE_KEY = os.environ["ONBID_API_KEY"]
-BID_URL     = "https://apis.data.go.kr/B010003/OnbidCltrBidDtlSrvc/getCltrBidInf"
+SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
+BID_URL     = "https://apis.data.go.kr/B010003/OnbidCltrBidDtlSrvc2/getCltrBidInf2"
 DB_PATH     = "onbid.db"
 
 SLEEP_SEC     = 0.15   # API 10 tps 제한 → 호출 간 대기(초)

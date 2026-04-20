@@ -1,6 +1,7 @@
 import os
 import sys
 import sqlite3
+import urllib.parse
 import requests
 import logging
 from datetime import datetime
@@ -20,8 +21,8 @@ from processor.query import query_items
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
-SERVICE_KEY = os.environ["ONBID_API_KEY"]
-BASE_URL    = "https://apis.data.go.kr/B010003/OnbidRlstListSrvc/getRlstCltrList"
+SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
+BASE_URL    = "https://apis.data.go.kr/B010003/OnbidRlstListSrvc2/getRlstCltrList2"
 DB_PATH     = "onbid.db"
 
 NUM_OF_ROWS = 100   # 페이지당 최대 수집 건수
@@ -100,10 +101,19 @@ def parse_dt(dt_str: str) -> str | None:
 # API 호출
 # ─────────────────────────────────────────
 def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
-    """온비드 공매물건 목록 API를 페이지 단위로 호출해 전체 결과를 반환.
-    totalCount에 도달하거나 MAX_PAGES에 도달하면 중단.
+    """수의계약 불가(N) / 가능(Y) 물건을 각각 수집해 합쳐 반환."""
+    items: list[dict] = []
+    for pvct_yn in ("N", "Y"):
+        items.extend(_fetch_pages_by_pvct(mclass, sclass, label, pvct_yn))
+    return items
+
+
+def _fetch_pages_by_pvct(mclass: str, sclass: str, label: str, pvct_yn: str) -> list[dict]:
+    """특정 pvctTrgtYn 값으로 목록 API를 페이지 단위 호출해 결과 반환.
+    NODATA_ERROR(resultCode 03)는 정상적인 빈 결과로 간주.
     """
     items = []
+    sub_label = f"{label}|pvct={pvct_yn}"
     for page_no in range(1, MAX_PAGES + 1):
         url = (
             f"{BASE_URL}"
@@ -112,6 +122,7 @@ def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
             f"&numOfRows={NUM_OF_ROWS}"                            # 페이지당 건수
             "&resultType=json"                                     # 응답 형식
             "&prptDivCd=0007,0010,0005,0002,0003,0006,0008,0011"   # 재산종류 코드 (다중)
+            f"&pvctTrgtYn={pvct_yn}"                               # v2 필수 — 수의계약 가능여부
             "&dspsMthodCd=0001"                                    # 매각만
             "&bidDivCd=0001"                                       # 인터넷 입찰만
             "&cltrUsgLclsCtgrNm=부동산"                              # 부동산만
@@ -124,11 +135,17 @@ def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
             res = requests.get(url, timeout=10)
             data = res.json()
         except Exception as e:
-            log.error(f"[{label}] 페이지 {page_no} 요청 실패: {e}")
+            log.error(f"[{sub_label}] 페이지 {page_no} 요청 실패: {e}")
+            break
+
+        # NODATA_ERROR: 조건 매칭 물건 0건 — 에러 아님
+        result_code = data.get("result", {}).get("resultCode") if isinstance(data.get("result"), dict) else None
+        if result_code == "03":
+            log.info(f"  [{sub_label}] 데이터 없음")
             break
 
         if "body" not in data:
-            log.error(f"[{label}] 응답 구조 오류: {data}")
+            log.error(f"[{sub_label}] 응답 구조 오류: {data}")
             break
 
         total_count = data["body"].get("totalCount", 0)
@@ -142,7 +159,7 @@ def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
             break
 
         items.extend(page_items)
-        log.info(f"  [{label}] 페이지 {page_no} → {len(page_items)}건 (누적 {len(items)}/{total_count})")
+        log.info(f"  [{sub_label}] 페이지 {page_no} → {len(page_items)}건 (누적 {len(items)}/{total_count})")
 
         # 전체 건수 도달 시 조기 종료
         if len(items) >= total_count:
