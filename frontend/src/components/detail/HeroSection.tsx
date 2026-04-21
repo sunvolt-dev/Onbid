@@ -1,6 +1,7 @@
 // frontend/src/components/detail/HeroSection.tsx
 "use client";
 
+import { useState } from "react";
 import { fmtKRW, sqmsToPyeong, dLabel, daysLeft } from "@/utils/format";
 import { useMarketPrice } from "@/hooks/useMarketPrice";
 import type { BidItem } from "@/types";
@@ -44,10 +45,29 @@ function DiscountText({ discount }: { discount: number | null | undefined }) {
   );
 }
 
+const ONBID_SEARCH_URL =
+  "https://www.onbid.co.kr/op/cltrpbancinf/cltr/cltrcdtnsrch/CltrCdtnSrchController/mvmnCltrCdtnSrchClg.do";
+
+async function openOnbidWithClipboard(cltrMngNo: string) {
+  try {
+    await navigator.clipboard.writeText(cltrMngNo);
+  } catch {
+    // clipboard unavailable (insecure context or denied permission) — open anyway
+  }
+  window.open(ONBID_SEARCH_URL, "_blank", "noopener,noreferrer");
+}
+
 export default function HeroSection({ item, onBookmark, onRefresh, refreshing }: Props) {
   const address = `${item.lctn_sd_nm} ${item.lctn_sggn_nm} ${item.lctn_emd_nm}`;
   const { market } = useMarketPrice(item.cltr_mng_no);
   const discount = market?.comparison?.discount_from_market_pct ?? null;
+  const [copied, setCopied] = useState(false);
+
+  async function handleOnbidClick() {
+    await openOnbidWithClipboard(item.cltr_mng_no);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  }
 
   return (
     <div className="bg-surface shadow-card rounded-xl p-5 md:p-6">
@@ -178,14 +198,14 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
           >
             {item.is_bookmarked ? "★ 관심 해제" : "☆ 관심 등록"}
           </button>
-          <a
-            href={`https://www.onbid.co.kr/op/cta/cuiAuctRlsInfo/selectCuiAuctRlsInfoDtl.do?cltrMngNo=${item.cltr_mng_no}`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={handleOnbidClick}
+            title={`물건번호 복사 + 온비드 조건검색 열기 (${item.cltr_mng_no})`}
             className="flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-fg hover:bg-primary-hover transition-colors text-center"
           >
-            온비드 →
-          </a>
+            {copied ? "물건번호 복사됨 · 붙여넣기" : "온비드 →"}
+          </button>
         </div>
       </div>
     </div>
