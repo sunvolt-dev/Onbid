@@ -181,7 +181,7 @@ export default function TabPricing({ item }: Props) {
       ) : marketError ? (
         <StatusBanner icon="⚠️" title="조회 실패" desc={marketError} />
       ) : market && market.status === "ok" ? (
-        <MarketSection market={market} item={item} />
+        <MarketSection market={market} />
       ) : market && STATUS_MSG[market.status] ? (
         <StatusBanner {...STATUS_MSG[market.status]} extra={market.message} />
       ) : null}
@@ -226,71 +226,49 @@ function StatusBanner({ icon, title, desc, extra }: { icon: string; title: strin
   );
 }
 
-function MarketSection({ market, item }: { market: MarketPriceResponse; item: BidItem }) {
-  const { summary, comparison, transactions, match_tier, match_count } = market;
+function MarketSection({ market }: { market: MarketPriceResponse }) {
+  const { summary, transactions, match_tier, match_count } = market;
+
+  const unitPrices = transactions
+    .map((tx) => tx.unit_price)
+    .filter((p): p is number => p != null && p > 0);
+  const minUnit = unitPrices.length > 0 ? Math.min(...unitPrices) : null;
+  const maxUnit = unitPrices.length > 0 ? Math.max(...unitPrices) : null;
 
   return (
     <>
       <div className="bg-surface shadow-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-semibold text-text-1">실거래가 기반 시세 비교</p>
+          <p className="text-sm font-semibold text-text-1">실거래 단가 통계</p>
           <span className="text-[10px] text-text-4 bg-surface-muted px-2 py-0.5 rounded-full">
             {TIER_LABELS[match_tier ?? 0] ?? ""} / {match_count}건
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
-            <p className="text-[11px] text-text-4">추정 시세</p>
+            <p className="text-[11px] text-text-4">최저 평당가</p>
             <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">
-              {fmtAmt(summary?.estimated_market_price_won)}
-            </p>
-            <p className="text-[10px] text-text-4 mt-0.5">
-              {summary?.avg_unit_price ? `${summary.avg_unit_price.toFixed(1)}만/㎡` : "-"}
+              {minUnit != null ? `${minUnit.toFixed(1)}만/㎡` : "-"}
             </p>
           </div>
           <div className="text-center border-x border-border">
-            <p className="text-[11px] text-text-4">최저입찰가</p>
+            <p className="text-[11px] text-text-4">평균 평당가</p>
             <p className="text-base font-bold text-primary mt-0.5 tabular-nums">
-              {fmtAmt(item.lowst_bid_prc)}
+              {summary?.avg_unit_price != null ? `${summary.avg_unit_price.toFixed(1)}만/㎡` : "-"}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-[11px] text-text-4">시세 대비</p>
-            {comparison ? (
-              <>
-                <p className={`text-base font-bold mt-0.5 tabular-nums ${
-                  comparison.discount_from_market_pct > 30
-                    ? "text-hot-fg"
-                    : comparison.discount_from_market_pct > 15
-                    ? "text-mid-fg"
-                    : "text-ok-fg"
-                }`}>
-                  -{comparison.discount_from_market_pct.toFixed(1)}%
-                </p>
-                <p className="text-[10px] text-text-4 mt-0.5">
-                  시세의 {comparison.market_vs_bid_pct.toFixed(1)}%
-                </p>
-              </>
-            ) : (
-              <p className="text-base font-bold text-text-4 mt-0.5">-</p>
-            )}
+            <p className="text-[11px] text-text-4">최고 평당가</p>
+            <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">
+              {maxUnit != null ? `${maxUnit.toFixed(1)}만/㎡` : "-"}
+            </p>
           </div>
         </div>
 
-        {(summary?.avg_unit_price != null && summary?.effective_area_sqm != null) && (
-          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] text-text-4 font-mono">
-              추정시세 = {summary.avg_unit_price.toFixed(1)}만/㎡ × {summary.effective_area_sqm.toFixed(1)}㎡
-              {summary.assumed_exclusive_ratio != null && (
-                <span className="text-text-4/70">
-                  {" "}(공급면적 × {Math.round(summary.assumed_exclusive_ratio * 100)}% = 추정 전용면적)
-                </span>
-              )}
-            </p>
-            {summary.latest_deal && (
-              <p className="text-[10px] text-text-4">최근 거래: {summary.latest_deal}</p>
-            )}
+        {summary?.latest_deal && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-[10px] text-text-4">최근 거래: {summary.latest_deal}</p>
           </div>
         )}
       </div>
