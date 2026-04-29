@@ -29,7 +29,7 @@ export function useItems() {
     setError(null);
     try {
       const data = await fetchItems({
-        ratio_min: f.ratio_min || undefined,
+        ratio_min: f.ratio_min ?? undefined,
         ratio_max: f.ratio_max,
         price_min: f.price_min ?? undefined,
         price_max: f.price_max ?? undefined,

@@ -76,13 +76,28 @@ def get_items():
         conditions.append("cltr_usg_scls_nm = ?")
         params.append(usg_scls)
 
-    where = " AND ".join(conditions)
+    where = " AND ".join(conditions) if conditions else "1=1"
     params.append(limit)
+
+    # 리스트 렌더링에 필요한 컬럼만 선택 (SELECT * 대비 ~65% 페이로드 감소)
+    # thnl_img_url 은 BookmarkCard 에서만 쓰이므로 bookmarked 필터 시에만 포함
+    cols = [
+        "cltr_mng_no", "onbid_cltr_nm",
+        "cltr_usg_mcls_nm", "cltr_usg_scls_nm",
+        "lctn_sd_nm", "lctn_sggn_nm",
+        "apsl_evl_amt", "lowst_bid_prc", "ratio_pct",
+        "pbct_nsq", "usbd_nft",
+        "cltr_bid_end_dt", "pvct_trgt_yn",
+        "first_collected_at",
+    ]
+    if bookmarked == 1:
+        cols.append("thnl_img_url")
+    select_cols = ", ".join(cols)
 
     conn = get_db()
     try:
         rows = conn.execute(
-            f"SELECT * FROM BID_ITEMS WHERE {where} ORDER BY ratio_pct ASC LIMIT ?",
+            f"SELECT {select_cols} FROM BID_ITEMS WHERE {where} ORDER BY ratio_pct ASC LIMIT ?",
             params,
         ).fetchall()
     finally:
@@ -604,7 +619,7 @@ def analytics_summary():
 
         return jsonify({
             "total_items": total,
-            "total_delta": total - yesterday_total if yesterday_total else None,
+            "total_delta": total - yesterday_total if yesterday_total is not None else None,
             "avg_ratio_pct": avg_ratio,
             "by_region": [dict(r) for r in by_region],
             "by_usage_type": [dict(r) for r in by_usage],
@@ -813,7 +828,6 @@ def analytics_discount_by_region():
         # MOLIT_TRADE_CACHE.deal_ymd = YYYYMM, lawd_cd 앞 2자리 = 시도
         from datetime import datetime
         today = datetime.today()
-        six_months_ago = f"{today.year}{today.month:02d}"
         # 6개월 전 YYYYMM 계산
         y, m = today.year, today.month - 6
         while m <= 0:

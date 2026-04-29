@@ -5,8 +5,6 @@ import type {
   AnalyticsTrends,
   TrendPeriod,
 } from "@/types/analytics";
-import FlowChart from "./FlowChart";
-import RatioTrendChart from "./RatioTrendChart";
 
 const PERIODS: { value: TrendPeriod; label: string }[] = [
   { value: "7d", label: "7일" },
@@ -24,11 +22,7 @@ interface Props {
 }
 
 export default function MarketDynamics({
-  flow,
-  trends,
   period,
-  flowLoading,
-  trendsLoading,
   onPeriodChange,
 }: Props) {
   return (
@@ -50,11 +44,6 @@ export default function MarketDynamics({
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <FlowChart data={flow} loading={flowLoading} />
-        <RatioTrendChart data={trends} loading={trendsLoading} />
       </div>
     </section>
   );

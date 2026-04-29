@@ -1,5 +1,5 @@
 import { API_BASE } from "@/utils/api";
-import type { BidItem, Stats, ItemInfo, BidQual, TenantInfo } from "@/types";
+import type { BidItem, Stats, ItemInfo, BidQual, TenantInfo, MarketPriceResponse } from "@/types";
 
 export async function fetchItems(params: {
   ratio_min?: number;
@@ -76,5 +76,11 @@ export async function checkItem(id: string): Promise<{ alive: boolean; status: s
 export async function refreshItem(id: string): Promise<{ item: BidItem; refreshed: { detail: boolean; bid: boolean } }> {
   const res = await fetch(`${API_BASE}/api/items/${id}/refresh`, { method: "POST" });
   if (!res.ok) throw new Error("refresh failed");
+  return res.json();
+}
+
+export async function fetchMarketPrice(id: string): Promise<MarketPriceResponse> {
+  const res = await fetch(`${API_BASE}/api/items/${id}/market-price`);
+  if (!res.ok) throw new Error("market price fetch failed");
   return res.json();
 }

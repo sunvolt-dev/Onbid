@@ -34,6 +34,7 @@ export default function ItemDetailPage({
   const [closed, setClosed] = useState(false);
 
   useEffect(() => {
+    // 1) 캐시된 DB 데이터 즉시 표시 (빠름)
     fetchItem(id)
       .then((data) => {
         setItem(data);
@@ -45,6 +46,15 @@ export default function ItemDetailPage({
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
+
+    // 2) 백그라운드에서 온비드 API 호출해 fresh 데이터로 갱신
+    //    detail/bid 서브테이블이 cron 으로는 거의 갱신되지 않아
+    //    페이지 진입 시점에 한 번 더 호출하는 게 맞다.
+    setRefreshing(true);
+    refreshItem(id)
+      .then((res) => setItem(res.item))
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
   }, [id]);
 
   async function handleBookmark() {

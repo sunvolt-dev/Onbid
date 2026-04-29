@@ -31,6 +31,7 @@ export default function TabField({ item }: Props) {
   const [info, setInfo] = useState<ItemInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   useEffect(() => {
     fetchItemInfo(item.cltr_mng_no)
@@ -42,6 +43,7 @@ export default function TabField({ item }: Props) {
   // 서술형 정보 존재 여부
   const hasNarrative =
     !!(item.loc_vnty_pscd_cont || item.utlz_pscd_cont || item.icdl_cdtn_cont || item.cltr_etc_cont);
+  const hasImage = !!item.thnl_img_url && !imgFailed;
 
   // DecisionBanner
   let status: DecisionStatus = "ok";
@@ -66,9 +68,22 @@ export default function TabField({ item }: Props) {
       <DecisionBanner status={status}>{bannerText}</DecisionBanner>
 
       {/* === 1. 서술형 정보 (최상단 승격) === */}
-      {hasNarrative && (
+      {(hasNarrative || hasImage) && (
         <div className="bg-surface shadow-card rounded-xl p-5">
           <h3 className="text-sm font-semibold text-text-1 mb-3">현장 및 이용 현황</h3>
+          {hasImage && (
+            <div className="mb-4 w-full max-w-[640px] aspect-[4/3] rounded-lg overflow-hidden bg-surface-muted">
+              <img
+                src={(item.thnl_img_url as string).replace(
+                  "downloadImageKind=THNL_NM",
+                  "downloadImageKind=ORGN_NM",
+                )}
+                alt={item.onbid_cltr_nm}
+                className="w-full h-full object-cover"
+                onError={() => setImgFailed(true)}
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-4">
             {item.loc_vnty_pscd_cont && (
               <div>

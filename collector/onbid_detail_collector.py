@@ -27,6 +27,7 @@ BID_ITEMS(물건목록)에서 cltrMngNo + pbctCdtnNo 를 읽어
 import os
 import sys
 import sqlite3
+import urllib.parse
 import requests
 import logging
 import time
@@ -43,8 +44,8 @@ from db.schema_detail import init_detail_db
 # ─────────────────────────────────────────
 # 설정 (기존 collector.py와 동일 값 사용)
 # ─────────────────────────────────────────
-SERVICE_KEY = os.environ["ONBID_API_KEY"]
-DETAIL_URL  = "https://apis.data.go.kr/B010003/OnbidRlstDtlSrvc/getRlstDtlInf"
+SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
+DETAIL_URL  = "https://apis.data.go.kr/B010003/OnbidRlstDtlSrvc2/getRlstDtlInf2"
 DB_PATH     = "onbid.db"
 
 SLEEP_SEC       = 0.15   # API 10 tps 제한 → 호출 간 대기(초)
@@ -379,28 +380,27 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
 
     조건:
       - status = 'active' (낙찰/취소 제외)
-      - force=False: detail_fetched_at IS NULL (미조회) OR crtn_yn = 'Y' (정정 있음)
+      - force=False: detail_fetched_at IS NULL (신규 물건만 1회 수집)
       - force=True:  전체 active 물건 재조회
+
+    detail 데이터의 사후 갱신은 detail 페이지 진입 시 frontend 가
+    /api/items/<id>/refresh 로 트리거하므로(stale-while-revalidate),
+    cron 단계에서는 신규 물건 backfill 만 담당한다.
     """
     if force:
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
             WHERE status = 'active'
-            ORDER BY ratio_pct ASC  -- 낮은 비율(유망 물건) 먼저
+            ORDER BY ratio_pct ASC
         """
     else:
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
             WHERE status = 'active'
-              AND (
-                detail_fetched_at IS NULL   -- 한 번도 조회 안 한 물건
-                OR crtn_yn = 'Y'            -- 정정 이력 있는 물건 (재조회)
-              )
-            ORDER BY
-                detail_fetched_at IS NULL DESC,  -- 미조회 먼저
-                ratio_pct ASC                    -- 같은 우선순위라면 감정가비율 낮은 것 먼저
+              AND detail_fetched_at IS NULL
+            ORDER BY ratio_pct ASC
         """
     return conn.execute(sql).fetchall()
 

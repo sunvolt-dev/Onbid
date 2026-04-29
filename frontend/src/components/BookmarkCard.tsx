@@ -71,7 +71,7 @@ export default function BookmarkCard({ item }: { item: BidItem }) {
           <div className="text-base font-bold text-primary tabular-nums">
             {fmtAmt(item.lowst_bid_prc)}
           </div>
-          <DeadlineLabel dt={item.cltr_bid_end_dt} pvct={false} />
+          <DeadlineLabel dt={item.cltr_bid_end_dt} pvct={pvct} />
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           {item.usbd_nft > 0 && (

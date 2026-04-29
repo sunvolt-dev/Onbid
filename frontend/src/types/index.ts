@@ -37,6 +37,12 @@ export interface BidItem {
   icdl_cdtn_cont: string | null;
   zadr_nm: string | null;
   cltr_radr: string | null;
+  score?: number;
+  score_breakdown?: {
+    ratio: number;
+    fail: number;
+    location: number;
+  };
 }
 
 export interface Stats {
@@ -72,12 +78,13 @@ export interface BidQual {
   cltr_mng_no: string;
   pbct_cdtn_no: number;
   bid_seq: number;
-  bid_strt_dttm: string;
-  bid_end_dttm: string;
-  bid_opnn_dttm: string;
-  min_bd_prc: number;
-  bid_grnt_prc: number;
-  acml_fail_cnt: number;
+  bid_strt_dttm: string | null;
+  bid_end_dttm: string | null;
+  bid_opnn_dttm: string | null;
+  min_bd_prc: number | null;
+  bid_grnt_prc: number | null;
+  acml_fail_cnt: number | null;
+  result_status: string | null;   // "진행중" / "유찰" / "낙찰" / "취소"
   hist: BidHist[];
 }
 
@@ -86,6 +93,36 @@ export interface TenantInfo {
   ocpy_rel: Record<string, unknown>[];
   rgst_prmr: Record<string, unknown>[];
   dtbt_rqr: Record<string, unknown>[];
+}
+
+export interface MarketTransaction {
+  dong_nm: string;
+  bldg_nm: string;
+  exclu_use_ar: number | null;
+  deal_amount: number | null;
+  floor: string;
+  deal_date: string;
+  unit_price: number | null;
+}
+
+export interface MarketPriceResponse {
+  status: "ok" | "no_data" | "no_mapping" | "not_supported" | "api_error";
+  message?: string;
+  match_tier: number | null;
+  match_tier_label?: string;
+  match_count?: number;
+  transactions: MarketTransaction[];
+  summary: {
+    avg_unit_price: number | null;
+    estimated_market_price_won: number | null;
+    latest_deal: string | null;
+    effective_area_sqm?: number | null;
+    assumed_exclusive_ratio?: number | null;
+  } | null;
+  comparison: {
+    market_vs_bid_pct: number;
+    discount_from_market_pct: number;
+  } | null;
 }
 
 export interface FilterState {

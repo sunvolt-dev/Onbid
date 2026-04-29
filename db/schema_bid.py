@@ -30,7 +30,8 @@ def init_bid_db(conn: sqlite3.Connection):
             prv_bid_hist_rcnt       INTEGER,                -- 이전 입찰 내역 건수
             collb_bid_possbl_yn     TEXT,                   -- 공동입찰 가능여부 (Y/N)
             aprxy_bid_possbl_yn     TEXT,                   -- 대리입찰 가능여부 (Y/N)
-            elctrn_grnt_srv_yn      TEXT                    -- 전자보증서 가능여부 (Y/N)
+            elctrn_grnt_srv_yn      TEXT,                   -- 전자보증서 가능여부 (Y/N)
+            result_status           TEXT                    -- 회차 결과 (진행중/유찰/낙찰/취소)
         );
         CREATE INDEX IF NOT EXISTS idx_qual_cltr ON BID_QUAL(cltr_mng_no);
 
@@ -52,6 +53,12 @@ def init_bid_db(conn: sqlite3.Connection):
     if "bid_fetched_at" not in existing_cols:
         conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN bid_fetched_at TEXT")
         log.info("마이그레이션: BID_ITEMS.bid_fetched_at 컬럼 추가")
+
+    # BID_QUAL에 회차 결과 컬럼 추가 (마이그레이션)
+    qual_cols = {row[1] for row in conn.execute("PRAGMA table_info(BID_QUAL)")}
+    if "result_status" not in qual_cols:
+        conn.execute("ALTER TABLE BID_QUAL ADD COLUMN result_status TEXT")
+        log.info("마이그레이션: BID_QUAL.result_status 컬럼 추가")
 
     conn.commit()
     log.info("입찰정보 DB 초기화 완료")

@@ -11,16 +11,14 @@ import DecisionBanner, { type DecisionStatus } from "./DecisionBanner";
 const STORAGE_KEY_PREFIX = "onbid_memo_";
 
 const TIER_LABELS: Record<number, string> = {
-  0: "같은 건물 (지번 매칭)",
-  1: "같은 읍면동 + 같은 건물 + 유사면적",
-  2: "같은 읍면동 + 유사면적",
-  3: "같은 시군구 + 유사면적",
+  0: "같은 건물 (지번 완전일치)",
+  1: "같은 건물 (건물명+면적)",
 };
 
 const STATUS_MSG: Record<string, { icon: string; title: string; desc: string }> = {
   no_mapping:    { icon: "🗺️", title: "법정동코드 매핑 없음",   desc: "해당 지역의 법정동코드를 찾을 수 없습니다." },
   not_supported: { icon: "🏢", title: "미지원 용도",             desc: "현재 오피스텔과 업무시설만 시세 조회를 지원합니다." },
-  no_data:       { icon: "📭", title: "실거래 데이터 없음",     desc: "최근 6개월간 유사 조건의 거래 내역이 없습니다." },
+  no_data:       { icon: "📭", title: "같은 건물 실거래 없음",   desc: "최근 6개월간 같은 건물의 실거래가 없어 시세를 표시하지 않습니다. (주변 평균가는 오차가 커 신뢰도가 낮아 제외)" },
   api_error:     { icon: "⚠️", title: "API 오류",               desc: "국토교통부 API 호출 중 오류가 발생했습니다." },
 };
 
@@ -57,9 +55,14 @@ export default function TabPricing({ item }: Props) {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const firstMin = quals.length > 0 ? Math.max(...quals.map((q) => q.min_bd_prc)) : null;
-  const lastMin = quals.length > 0 ? quals[quals.length - 1].min_bd_prc : null;
+  // 가격 추이: 진행중 회차는 min_bd_prc가 null일 수 있어 BID_ITEMS의 lowst_bid_prc 사용
+  const pricedQuals = quals
+    .filter((q) => q.min_bd_prc != null && q.min_bd_prc > 0)
+    .sort((a, b) => a.bid_seq - b.bid_seq);
+  const firstMin = pricedQuals.length > 0 ? Math.max(...pricedQuals.map((q) => q.min_bd_prc as number)) : null;
+  const lastMin = item.lowst_bid_prc ?? (pricedQuals.length > 0 ? (pricedQuals[pricedQuals.length - 1].min_bd_prc as number) : null);
   const dropPct = firstMin && lastMin ? ((firstMin - lastMin) / firstMin) * 100 : null;
+  const failCount = quals.filter((q) => q.result_status === "유찰").length;
 
   // DecisionBanner status 결정
   const discount = market?.comparison?.discount_from_market_pct ?? null;
@@ -77,8 +80,8 @@ export default function TabPricing({ item }: Props) {
   } else {
     status = "danger";
   }
-  if (dropPct !== null && dropPct > 0) {
-    bannerText = `${quals.length}회차 유찰 후 ${bannerText}`;
+  if (failCount > 0) {
+    bannerText = `${failCount}회차 유찰 후 ${bannerText}`;
   }
 
   return (
@@ -114,23 +117,29 @@ export default function TabPricing({ item }: Props) {
                     </tr>
                   )}
                   {quals.map((q) => {
-                    const totalFail = q.hist.reduce((acc, h) => acc + h.prv_bid_fail_cnt, 0);
-                    const result = totalFail > 0 ? `유찰 ${totalFail}회` : "-";
+                    const status = q.result_status;
+                    const badgeClass =
+                      status === "진행중" ? "bg-ok-bg text-ok-fg" :
+                      status === "낙찰"   ? "bg-primary/10 text-primary" :
+                      status === "유찰"   ? "bg-mid-bg text-mid-fg" :
+                      status === "취소"   ? "bg-surface-muted text-text-4" :
+                      "bg-surface-muted text-text-4";
+                    const period = q.bid_strt_dttm && q.bid_end_dttm
+                      ? `${q.bid_strt_dttm} ~ ${q.bid_end_dttm}`
+                      : (q.bid_opnn_dttm ?? "-");
                     return (
                       <tr key={q.id} className="border-b border-border hover:bg-surface-muted">
                         <td className="px-3 py-2 text-text-1 font-medium">{q.bid_seq}회차</td>
-                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">
-                          {q.bid_strt_dttm} ~ {q.bid_end_dttm}
-                        </td>
+                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">{period}</td>
                         <td className="px-3 py-2 text-right text-primary font-medium tabular-nums">
-                          {fmtAmt(q.min_bd_prc)}
+                          {q.min_bd_prc != null ? fmtAmt(q.min_bd_prc) : "-"}
                         </td>
                         <td className="px-3 py-2 text-right text-text-3 tabular-nums">
-                          {fmtAmt(q.bid_grnt_prc)}
+                          {q.bid_grnt_prc != null ? fmtAmt(q.bid_grnt_prc) : "-"}
                         </td>
                         <td className="px-3 py-2 text-center">
-                          {totalFail > 0 ? (
-                            <span className="bg-mid-bg text-mid-fg rounded px-2 py-0.5">{result}</span>
+                          {status ? (
+                            <span className={`${badgeClass} rounded px-2 py-0.5`}>{status}</span>
                           ) : (
                             <span className="text-text-4">-</span>
                           )}
@@ -183,7 +192,7 @@ export default function TabPricing({ item }: Props) {
       ) : marketError ? (
         <StatusBanner icon="⚠️" title="조회 실패" desc={marketError} />
       ) : market && market.status === "ok" ? (
-        <MarketSection market={market} item={item} />
+        <MarketSection market={market} />
       ) : market && STATUS_MSG[market.status] ? (
         <StatusBanner {...STATUS_MSG[market.status]} extra={market.message} />
       ) : null}
@@ -228,60 +237,50 @@ function StatusBanner({ icon, title, desc, extra }: { icon: string; title: strin
   );
 }
 
-function MarketSection({ market, item }: { market: MarketPriceResponse; item: BidItem }) {
-  const { summary, comparison, transactions, match_tier, match_count } = market;
+function MarketSection({ market }: { market: MarketPriceResponse }) {
+  const { summary, transactions, match_tier, match_count } = market;
+
+  const unitPrices = transactions
+    .map((tx) => tx.unit_price)
+    .filter((p): p is number => p != null && p > 0);
+  const minUnit = unitPrices.length > 0 ? Math.min(...unitPrices) : null;
+  const maxUnit = unitPrices.length > 0 ? Math.max(...unitPrices) : null;
 
   return (
     <>
       <div className="bg-surface shadow-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-semibold text-text-1">실거래가 기반 시세 비교</p>
+          <p className="text-sm font-semibold text-text-1">실거래 단가 통계</p>
           <span className="text-[10px] text-text-4 bg-surface-muted px-2 py-0.5 rounded-full">
             {TIER_LABELS[match_tier ?? 0] ?? ""} / {match_count}건
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
-            <p className="text-[11px] text-text-4">추정 시세</p>
+            <p className="text-[11px] text-text-4">최저 평당가</p>
             <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">
-              {fmtAmt(summary?.estimated_market_price_won)}
-            </p>
-            <p className="text-[10px] text-text-4 mt-0.5">
-              {summary?.avg_unit_price ? `${summary.avg_unit_price.toFixed(1)}만/㎡` : "-"}
+              {minUnit != null ? `${minUnit.toFixed(1)}만/㎡` : "-"}
             </p>
           </div>
           <div className="text-center border-x border-border">
-            <p className="text-[11px] text-text-4">최저입찰가</p>
+            <p className="text-[11px] text-text-4">평균 평당가</p>
             <p className="text-base font-bold text-primary mt-0.5 tabular-nums">
-              {fmtAmt(item.lowst_bid_prc)}
+              {summary?.avg_unit_price != null ? `${summary.avg_unit_price.toFixed(1)}만/㎡` : "-"}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-[11px] text-text-4">시세 대비</p>
-            {comparison ? (
-              <>
-                <p className={`text-base font-bold mt-0.5 tabular-nums ${
-                  comparison.discount_from_market_pct > 30
-                    ? "text-hot-fg"
-                    : comparison.discount_from_market_pct > 15
-                    ? "text-mid-fg"
-                    : "text-ok-fg"
-                }`}>
-                  -{comparison.discount_from_market_pct.toFixed(1)}%
-                </p>
-                <p className="text-[10px] text-text-4 mt-0.5">
-                  시세의 {comparison.market_vs_bid_pct.toFixed(1)}%
-                </p>
-              </>
-            ) : (
-              <p className="text-base font-bold text-text-4 mt-0.5">-</p>
-            )}
+            <p className="text-[11px] text-text-4">최고 평당가</p>
+            <p className="text-base font-bold text-text-1 mt-0.5 tabular-nums">
+              {maxUnit != null ? `${maxUnit.toFixed(1)}만/㎡` : "-"}
+            </p>
           </div>
         </div>
 
         {summary?.latest_deal && (
-          <p className="text-[10px] text-text-4 text-right">최근 거래: {summary.latest_deal}</p>
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-[10px] text-text-4">최근 거래: {summary.latest_deal}</p>
+          </div>
         )}
       </div>
 
