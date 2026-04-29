@@ -55,9 +55,14 @@ export default function TabPricing({ item }: Props) {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const firstMin = quals.length > 0 ? Math.max(...quals.map((q) => q.min_bd_prc)) : null;
-  const lastMin = quals.length > 0 ? quals[quals.length - 1].min_bd_prc : null;
+  // 가격 추이: 진행중 회차는 min_bd_prc가 null일 수 있어 BID_ITEMS의 lowst_bid_prc 사용
+  const pricedQuals = quals
+    .filter((q) => q.min_bd_prc != null && q.min_bd_prc > 0)
+    .sort((a, b) => a.bid_seq - b.bid_seq);
+  const firstMin = pricedQuals.length > 0 ? Math.max(...pricedQuals.map((q) => q.min_bd_prc as number)) : null;
+  const lastMin = item.lowst_bid_prc ?? (pricedQuals.length > 0 ? (pricedQuals[pricedQuals.length - 1].min_bd_prc as number) : null);
   const dropPct = firstMin && lastMin ? ((firstMin - lastMin) / firstMin) * 100 : null;
+  const failCount = quals.filter((q) => q.result_status === "유찰").length;
 
   // DecisionBanner status 결정
   const discount = market?.comparison?.discount_from_market_pct ?? null;
@@ -75,8 +80,8 @@ export default function TabPricing({ item }: Props) {
   } else {
     status = "danger";
   }
-  if (dropPct !== null && dropPct > 0) {
-    bannerText = `${quals.length}회차 유찰 후 ${bannerText}`;
+  if (failCount > 0) {
+    bannerText = `${failCount}회차 유찰 후 ${bannerText}`;
   }
 
   return (
@@ -112,23 +117,29 @@ export default function TabPricing({ item }: Props) {
                     </tr>
                   )}
                   {quals.map((q) => {
-                    const totalFail = q.hist.reduce((acc, h) => acc + h.prv_bid_fail_cnt, 0);
-                    const result = totalFail > 0 ? `유찰 ${totalFail}회` : "-";
+                    const status = q.result_status;
+                    const badgeClass =
+                      status === "진행중" ? "bg-ok-bg text-ok-fg" :
+                      status === "낙찰"   ? "bg-primary/10 text-primary" :
+                      status === "유찰"   ? "bg-mid-bg text-mid-fg" :
+                      status === "취소"   ? "bg-surface-muted text-text-4" :
+                      "bg-surface-muted text-text-4";
+                    const period = q.bid_strt_dttm && q.bid_end_dttm
+                      ? `${q.bid_strt_dttm} ~ ${q.bid_end_dttm}`
+                      : (q.bid_opnn_dttm ?? "-");
                     return (
                       <tr key={q.id} className="border-b border-border hover:bg-surface-muted">
                         <td className="px-3 py-2 text-text-1 font-medium">{q.bid_seq}회차</td>
-                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">
-                          {q.bid_strt_dttm} ~ {q.bid_end_dttm}
-                        </td>
+                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">{period}</td>
                         <td className="px-3 py-2 text-right text-primary font-medium tabular-nums">
-                          {fmtAmt(q.min_bd_prc)}
+                          {q.min_bd_prc != null ? fmtAmt(q.min_bd_prc) : "-"}
                         </td>
                         <td className="px-3 py-2 text-right text-text-3 tabular-nums">
-                          {fmtAmt(q.bid_grnt_prc)}
+                          {q.bid_grnt_prc != null ? fmtAmt(q.bid_grnt_prc) : "-"}
                         </td>
                         <td className="px-3 py-2 text-center">
-                          {totalFail > 0 ? (
-                            <span className="bg-mid-bg text-mid-fg rounded px-2 py-0.5">{result}</span>
+                          {status ? (
+                            <span className={`${badgeClass} rounded px-2 py-0.5`}>{status}</span>
                           ) : (
                             <span className="text-text-4">-</span>
                           )}

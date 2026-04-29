@@ -78,12 +78,13 @@ export interface BidQual {
   cltr_mng_no: string;
   pbct_cdtn_no: number;
   bid_seq: number;
-  bid_strt_dttm: string;
-  bid_end_dttm: string;
-  bid_opnn_dttm: string;
-  min_bd_prc: number;
-  bid_grnt_prc: number;
-  acml_fail_cnt: number;
+  bid_strt_dttm: string | null;
+  bid_end_dttm: string | null;
+  bid_opnn_dttm: string | null;
+  min_bd_prc: number | null;
+  bid_grnt_prc: number | null;
+  acml_fail_cnt: number | null;
+  result_status: string | null;   // "진행중" / "유찰" / "낙찰" / "취소"
   hist: BidHist[];
 }
 
