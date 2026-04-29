@@ -98,10 +98,20 @@ def parse_dt(dt_str: str) -> str | None:
 
 
 # ─────────────────────────────────────────
+# 예외
+# ─────────────────────────────────────────
+class PageFetchError(Exception):
+    """목록 페이지 수집 중 일시적 실패. 호출자에 전파해 부분 데이터로
+    mark_closed 가 활성 물건을 잘못 closed 마킹하는 것을 막는다."""
+
+
+# ─────────────────────────────────────────
 # API 호출
 # ─────────────────────────────────────────
 def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
-    """수의계약 불가(N) / 가능(Y) 물건을 각각 수집해 합쳐 반환."""
+    """수의계약 불가(N) / 가능(Y) 물건을 각각 수집해 합쳐 반환.
+    pvct 서브쿼리 중 하나라도 실패하면 PageFetchError 가 그대로 전파된다.
+    """
     items: list[dict] = []
     for pvct_yn in ("N", "Y"):
         items.extend(_fetch_pages_by_pvct(mclass, sclass, label, pvct_yn))
@@ -111,6 +121,7 @@ def fetch_pages(mclass: str, sclass: str, label: str) -> list[dict]:
 def _fetch_pages_by_pvct(mclass: str, sclass: str, label: str, pvct_yn: str) -> list[dict]:
     """특정 pvctTrgtYn 값으로 목록 API를 페이지 단위 호출해 결과 반환.
     NODATA_ERROR(resultCode 03)는 정상적인 빈 결과로 간주.
+    네트워크/응답 구조 실패는 PageFetchError 로 전파한다.
     """
     items = []
     sub_label = f"{label}|pvct={pvct_yn}"
@@ -135,8 +146,9 @@ def _fetch_pages_by_pvct(mclass: str, sclass: str, label: str, pvct_yn: str) -> 
             res = requests.get(url, timeout=10)
             data = res.json()
         except Exception as e:
-            log.error(f"[{sub_label}] 페이지 {page_no} 요청 실패: {e}")
-            break
+            raise PageFetchError(
+                f"[{sub_label}] 페이지 {page_no} 요청 실패: {e}"
+            ) from e
 
         # NODATA_ERROR: 조건 매칭 물건 0건 — 에러 아님
         result_code = data.get("result", {}).get("resultCode") if isinstance(data.get("result"), dict) else None
@@ -145,8 +157,7 @@ def _fetch_pages_by_pvct(mclass: str, sclass: str, label: str, pvct_yn: str) -> 
             break
 
         if "body" not in data:
-            log.error(f"[{sub_label}] 응답 구조 오류: {data}")
-            break
+            raise PageFetchError(f"[{sub_label}] 응답 구조 오류: {data}")
 
         total_count = data["body"].get("totalCount", 0)
         raw_items   = data["body"].get("items") or {}
@@ -308,7 +319,8 @@ def main():
     try:
         init_db(conn)
 
-        all_collected_ids: set = set()  # 전체 그룹에서 수집된 물건번호 합산
+        all_collected_ids: set = set()  # 성공한 그룹의 수집 ID 합산
+        succeeded_groups: list[tuple[str, str]] = []  # (mclass, sclass) — 실패 그룹 mark_closed 보호용
 
         for group in QUERY_GROUPS:
             label  = group["label"]
@@ -321,16 +333,19 @@ def main():
             try:
                 items = fetch_pages(mclass, sclass, label)
                 new_cnt, upd_cnt, ids = upsert_items(conn, items)
-                all_collected_ids |= ids  # 그룹별 수집 ID를 전체 셋에 합산
+                all_collected_ids |= ids
+                succeeded_groups.append((mclass, sclass))
                 save_log(conn, label, len(items), new_cnt, upd_cnt, "success")
                 log.info(f"[{label}] 완료 → 전체 {len(items)}건 / 신규 {new_cnt}건 / 변경 {upd_cnt}건")
 
             except Exception as e:
+                # 부분 실패 그룹은 succeeded_groups 에 들어가지 않으므로
+                # mark_closed 가 그 그룹의 물건을 건드리지 않는다.
                 save_log(conn, label, 0, 0, 0, "fail", str(e))
                 log.error(f"[{label}] 실패: {e}")
 
-        # 모든 그룹 수집 완료 후 사라진 물건 closed 처리
-        closed_cnt = mark_closed(conn, all_collected_ids)
+        # 성공한 그룹의 물건만 mark_closed 대상. 실패 그룹은 보존.
+        closed_cnt = mark_closed(conn, all_collected_ids, succeeded_groups)
         if closed_cnt:
             log.info(f"[종료 감지] {closed_cnt}건 → status=closed (낙찰/취소 추정)")
 

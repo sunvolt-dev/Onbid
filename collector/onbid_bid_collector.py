@@ -321,15 +321,18 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
     """입찰정보 조회가 필요한 물건 목록 반환.
 
     조건:
-      - status = 'active'
-      - force=False: bid_fetched_at IS NULL (미조회) 만
+      - status = 'active' (closed + pvct_trgt_yn='Y' 누적분 65건 등을 제외)
+      - force=False: 다음 중 하나
+          a) bid_fetched_at IS NULL (미조회)
+          b) bid_fetched_at 이 2일 이상 경과 (단순 안전망)
+          c) BID_QUAL 의 진행중 회차 마감일이 이미 지났음 (새 회차 등장 가능성)
       - force=True:  전체 active 물건 재조회
     """
     if force:
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
+            WHERE status = 'active'
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
             ORDER BY ratio_pct ASC
         """
@@ -337,9 +340,18 @@ def get_pending_items(conn: sqlite3.Connection, force: bool = False) -> list[tup
         sql = """
             SELECT cltr_mng_no, pbct_cdtn_no
             FROM BID_ITEMS
-            WHERE (status = 'active' OR pvct_trgt_yn = 'Y')
-              AND bid_fetched_at IS NULL
+            WHERE status = 'active'
               AND cltr_bid_bgng_dt <= datetime('now', 'localtime')
+              AND (
+                   bid_fetched_at IS NULL
+                OR bid_fetched_at < datetime('now', 'localtime', '-2 days')
+                OR EXISTS (
+                     SELECT 1 FROM BID_QUAL q
+                     WHERE q.cltr_mng_no = BID_ITEMS.cltr_mng_no
+                       AND q.result_status = '진행중'
+                       AND q.bid_end_dttm < datetime('now', 'localtime')
+                   )
+              )
             ORDER BY ratio_pct ASC
         """
     return conn.execute(sql).fetchall()
