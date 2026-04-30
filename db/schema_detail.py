@@ -146,12 +146,16 @@ def init_detail_db(conn: sqlite3.Connection):
 
     # 위치 및 이용현황 컬럼 마이그레이션
     migrate_cols = {
-        "loc_vnty_pscd_cont": "TEXT",   # 위치 및 부근 현황
-        "utlz_pscd_cont":     "TEXT",   # 이용현황
-        "cltr_etc_cont":      "TEXT",   # 기타사항
-        "icdl_cdtn_cont":     "TEXT",   # 부대조건
-        "zadr_nm":             "TEXT",   # 지번주소(전체)
-        "cltr_radr":           "TEXT",   # 도로명주소(전체)
+        "loc_vnty_pscd_cont": "TEXT",    # 위치 및 부근 현황
+        "utlz_pscd_cont":     "TEXT",    # 이용현황
+        "cltr_etc_cont":      "TEXT",    # 기타사항
+        "icdl_cdtn_cont":     "TEXT",    # 부대조건
+        "zadr_nm":            "TEXT",    # 지번주소(전체)
+        "cltr_radr":          "TEXT",    # 도로명주소(전체)
+        # 온비드 웹 상세페이지 호출 시 필요한 보조 식별자 (cltrMngNo+pbctCdtnNo만으로는 500 에러)
+        "onbid_cltrno":       "INTEGER", # 온비드 물건번호
+        "onbid_pbanc_no":     "INTEGER", # 온비드 공고번호
+        "pbct_no":            "INTEGER", # 공매번호
     }
     for col, dtype in migrate_cols.items():
         if col not in existing_cols:

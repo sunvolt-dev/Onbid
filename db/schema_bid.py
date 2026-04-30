@@ -54,11 +54,17 @@ def init_bid_db(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE BID_ITEMS ADD COLUMN bid_fetched_at TEXT")
         log.info("마이그레이션: BID_ITEMS.bid_fetched_at 컬럼 추가")
 
-    # BID_QUAL에 회차 결과 컬럼 추가 (마이그레이션)
+    # BID_QUAL 마이그레이션
     qual_cols = {row[1] for row in conn.execute("PRAGMA table_info(BID_QUAL)")}
-    if "result_status" not in qual_cols:
-        conn.execute("ALTER TABLE BID_QUAL ADD COLUMN result_status TEXT")
-        log.info("마이그레이션: BID_QUAL.result_status 컬럼 추가")
+    qual_migrate = {
+        "result_status": "TEXT",     # 진행중/유찰/낙찰/취소
+        "bid_round":     "INTEGER",  # 차수 (회차/차수 의 뒤 숫자, 웹 스크레이핑 결과)
+        "winning_amt":   "INTEGER",  # 낙찰금액 (웹 스크레이핑 결과)
+    }
+    for col, dtype in qual_migrate.items():
+        if col not in qual_cols:
+            conn.execute(f"ALTER TABLE BID_QUAL ADD COLUMN {col} {dtype}")
+            log.info(f"마이그레이션: BID_QUAL.{col} 컬럼 추가")
 
     conn.commit()
     log.info("입찰정보 DB 초기화 완료")

@@ -348,7 +348,7 @@ def save_detail(conn: sqlite3.Connection, cltr_mng_no: str, item: dict):
     save_crtn_lst   (conn, cltr_mng_no, to_list(item.get("crtnLstClgList")))
     save_paps_inf   (conn, cltr_mng_no, item.get("papsInf"))
 
-    # 위치 및 이용현황 저장
+    # 위치 및 이용현황 + 웹 호출용 보조 식별자 저장
     conn.execute("""
         UPDATE BID_ITEMS SET
             loc_vnty_pscd_cont = ?,
@@ -357,6 +357,9 @@ def save_detail(conn: sqlite3.Connection, cltr_mng_no: str, item: dict):
             icdl_cdtn_cont     = ?,
             zadr_nm            = ?,
             cltr_radr          = ?,
+            onbid_cltrno       = ?,
+            onbid_pbanc_no     = ?,
+            pbct_no            = ?,
             detail_fetched_at  = ?
         WHERE cltr_mng_no = ?
     """, (
@@ -366,6 +369,9 @@ def save_detail(conn: sqlite3.Connection, cltr_mng_no: str, item: dict):
         to_str(item.get("icdlCdtnCont")),
         to_str(item.get("zadrNm")),
         to_str(item.get("cltrRadr")),
+        to_int(item.get("onbidCltrno")),
+        to_int(item.get("onbidPbancNo")),
+        to_int(item.get("pbctNo")),
         now_str(),
         cltr_mng_no,
     ))
