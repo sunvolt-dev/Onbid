@@ -15,6 +15,31 @@ const TIER_LABELS: Record<number, string> = {
   1: "같은 건물 (건물명+면적)",
 };
 
+// 회차 묶음을 시간순 정렬 후 bid_seq=1 마다 새 그룹으로 분리.
+// 같은 cltr_mng_no 안에 공매조건(pbct_cdtn_no)이 여러 번 새로 만들어지는 경우
+// (수의계약 단계의 가격 인하 재공매 등) bid_seq 가 1로 다시 시작되므로
+// 이를 경계로 그룹화한다. 결과는 최신 그룹부터 반환.
+function groupByCdtn(quals: BidQual[]): BidQual[][] {
+  if (quals.length === 0) return [];
+  const sorted = [...quals].sort((a, b) => {
+    const ta = a.bid_opnn_dttm ?? "";
+    const tb = b.bid_opnn_dttm ?? "";
+    if (ta && tb && ta !== tb) return ta.localeCompare(tb);
+    return a.bid_seq - b.bid_seq;
+  });
+  const groups: BidQual[][] = [];
+  let current: BidQual[] = [];
+  for (const q of sorted) {
+    if (q.bid_seq === 1 && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(q);
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.reverse();
+}
+
 const STATUS_MSG: Record<string, { icon: string; title: string; desc: string }> = {
   no_mapping:    { icon: "🗺️", title: "법정동코드 매핑 없음",   desc: "해당 지역의 법정동코드를 찾을 수 없습니다." },
   not_supported: { icon: "🏢", title: "미지원 용도",             desc: "현재 오피스텔과 업무시설만 시세 조회를 지원합니다." },
@@ -96,60 +121,12 @@ export default function TabPricing({ item }: Props) {
             <div className="text-sm text-text-4 animate-pulse py-8 text-center">로딩 중...</div>
           ) : histError ? (
             <div className="text-sm text-hot-fg py-8 text-center">입찰 이력을 불러올 수 없습니다.</div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg bg-surface shadow-card">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-surface-muted border-b border-border">
-                    <th className="text-left px-3 py-2.5 text-text-3 font-semibold">회차</th>
-                    <th className="text-left px-3 py-2.5 text-text-3 font-semibold">입찰기간</th>
-                    <th className="text-right px-3 py-2.5 text-text-3 font-semibold">최저가</th>
-                    <th className="text-right px-3 py-2.5 text-text-3 font-semibold">보증금</th>
-                    <th className="text-center px-3 py-2.5 text-text-3 font-semibold">결과</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quals.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 text-text-4">
-                        입찰 회차 정보가 없습니다
-                      </td>
-                    </tr>
-                  )}
-                  {quals.map((q) => {
-                    const status = q.result_status;
-                    const badgeClass =
-                      status === "진행중" ? "bg-ok-bg text-ok-fg" :
-                      status === "낙찰"   ? "bg-primary/10 text-primary" :
-                      status === "유찰"   ? "bg-mid-bg text-mid-fg" :
-                      status === "취소"   ? "bg-surface-muted text-text-4" :
-                      "bg-surface-muted text-text-4";
-                    const period = q.bid_strt_dttm && q.bid_end_dttm
-                      ? `${q.bid_strt_dttm} ~ ${q.bid_end_dttm}`
-                      : (q.bid_opnn_dttm ?? "-");
-                    return (
-                      <tr key={q.id} className="border-b border-border hover:bg-surface-muted">
-                        <td className="px-3 py-2 text-text-1 font-medium">{q.bid_seq}회차</td>
-                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">{period}</td>
-                        <td className="px-3 py-2 text-right text-primary font-medium tabular-nums">
-                          {q.min_bd_prc != null ? fmtAmt(q.min_bd_prc) : "-"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-text-3 tabular-nums">
-                          {q.bid_grnt_prc != null ? fmtAmt(q.bid_grnt_prc) : "-"}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {status ? (
-                            <span className={`${badgeClass} rounded px-2 py-0.5`}>{status}</span>
-                          ) : (
-                            <span className="text-text-4">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          ) : quals.length === 0 ? (
+            <div className="rounded-lg bg-surface shadow-card text-center py-8 text-xs text-text-4">
+              입찰 회차 정보가 없습니다
             </div>
+          ) : (
+            <BidGroups quals={quals} />
           )}
         </div>
 
@@ -218,6 +195,96 @@ export default function TabPricing({ item }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BidGroups({ quals }: { quals: BidQual[] }) {
+  const groups = groupByCdtn(quals);
+  const total = groups.length;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map((group, idx) => {
+        // 라벨: 가장 옛 그룹 = 1차, 최신 그룹 = N차 (groups 는 최신 → 옛 순)
+        const order = total - idx;
+        const start = group[0].bid_opnn_dttm?.slice(0, 7) ?? "-";
+        const end   = group[group.length - 1].bid_opnn_dttm?.slice(0, 7) ?? null;
+        const periodLabel = end && end !== start ? `${start} ~ ${end}` : start;
+
+        const failCnt    = group.filter(q => q.result_status === "유찰").length;
+        const wonCnt     = group.filter(q => q.result_status === "낙찰").length;
+        const cancelCnt  = group.filter(q => q.result_status === "취소").length;
+        const ongoingCnt = group.filter(q => q.result_status === "진행중").length;
+
+        const summaryParts: string[] = [];
+        if (ongoingCnt > 0) summaryParts.push(`${ongoingCnt}회 진행중`);
+        if (wonCnt > 0)     summaryParts.push(`${wonCnt}회 낙찰`);
+        if (failCnt > 0)    summaryParts.push(`${failCnt}회 유찰`);
+        if (cancelCnt > 0)  summaryParts.push(`${cancelCnt}회 취소`);
+        const summary = summaryParts.join(" · ") || "회차 없음";
+
+        // 그룹 내부는 회차 내림차순 (최신 회차부터)
+        const sortedRows = [...group].sort((a, b) => b.bid_seq - a.bid_seq);
+
+        return (
+          <div key={group[0].id} className="bg-surface shadow-card rounded-lg overflow-hidden">
+            <div className="flex items-baseline justify-between px-3 py-2 bg-surface-muted border-b border-border">
+              <p className="text-xs font-semibold text-text-1">
+                {order}차 공매
+                <span className="ml-2 text-text-3 font-normal">{periodLabel}</span>
+              </p>
+              <p className="text-[11px] text-text-3">{summary}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2 text-text-3 font-semibold">회차</th>
+                    <th className="text-left px-3 py-2 text-text-3 font-semibold">입찰기간</th>
+                    <th className="text-right px-3 py-2 text-text-3 font-semibold">최저가</th>
+                    <th className="text-right px-3 py-2 text-text-3 font-semibold">보증금</th>
+                    <th className="text-center px-3 py-2 text-text-3 font-semibold">결과</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map(q => {
+                    const status = q.result_status;
+                    const badgeClass =
+                      status === "진행중" ? "bg-ok-bg text-ok-fg" :
+                      status === "낙찰"   ? "bg-primary/10 text-primary" :
+                      status === "유찰"   ? "bg-mid-bg text-mid-fg" :
+                      status === "취소"   ? "bg-surface-muted text-text-4" :
+                      "bg-surface-muted text-text-4";
+                    const period = q.bid_strt_dttm && q.bid_end_dttm
+                      ? `${q.bid_strt_dttm} ~ ${q.bid_end_dttm}`
+                      : (q.bid_opnn_dttm ?? "-");
+                    return (
+                      <tr key={q.id} className="border-b border-border last:border-0 hover:bg-surface-muted">
+                        <td className="px-3 py-2 text-text-1 font-medium">{q.bid_seq}회차</td>
+                        <td className="px-3 py-2 text-text-3 whitespace-nowrap">{period}</td>
+                        <td className="px-3 py-2 text-right text-primary font-medium tabular-nums">
+                          {q.min_bd_prc != null ? fmtAmt(q.min_bd_prc) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-text-3 tabular-nums">
+                          {q.bid_grnt_prc != null ? fmtAmt(q.bid_grnt_prc) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {status ? (
+                            <span className={`${badgeClass} rounded px-2 py-0.5`}>{status}</span>
+                          ) : (
+                            <span className="text-text-4">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
