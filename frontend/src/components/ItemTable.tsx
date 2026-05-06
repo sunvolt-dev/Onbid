@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { BidItem, FilterState } from "@/types";
+import type { BidItem, FilterState, SortKey } from "@/types";
 import { fmtAmt, daysLeft, sqmsToPyeong } from "@/utils/format";
 import { isNewToday } from "@/utils/itemFlags";
 import RatioPill from "@/components/ui/RatioPill";
@@ -48,28 +48,34 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
   const totalPages = Math.ceil(visibleItems.length / PAGE_SIZE);
   const pageItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const SortBtn = ({ val, label }: { val: FilterState["sort"]; label: string }) => (
-    <button
-      onClick={() => onSortChange(val)}
-      className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-        filter.sort === val
-          ? "bg-primary text-primary-fg border-primary"
-          : "bg-surface text-text-2 border-border-strong hover:border-primary hover:text-primary"
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const toggleSort = (key: SortKey) => {
+    const nextDir = filter.sort.key === key && filter.sort.dir === "asc" ? "desc" : "asc";
+    onSortChange({ key, dir: nextDir });
+  };
+
+  const SortHeader = ({
+    sortKey, label, align = "right",
+  }: { sortKey: SortKey; label: string; align?: "left" | "right" | "center" }) => {
+    const active = filter.sort.key === sortKey;
+    const arrow = !active ? "↕" : filter.sort.dir === "asc" ? "↑" : "↓";
+    const alignCls = align === "left" ? "text-left" : align === "center" ? "text-center" : "text-right";
+    return (
+      <th
+        className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap cursor-pointer select-none hover:text-primary ${
+          active ? "text-primary" : "text-text-3"
+        } ${alignCls}`}
+        onClick={() => toggleSort(sortKey)}
+      >
+        {label} <span className={active ? "" : "opacity-30"}>{arrow}</span>
+      </th>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 정렬 툴바 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-text-3">정렬:</span>
-        <SortBtn val="ratio" label="비율 ↑" />
-        <SortBtn val="usbd" label="유찰횟수" />
-        <SortBtn val="deadline" label="마감일" />
-        <span className="ml-auto text-xs text-text-4 tabular-nums">
+      {/* 결과 카운트 */}
+      <div className="flex items-center justify-end">
+        <span className="text-xs text-text-4 tabular-nums">
           {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleItems.length)} / 총 {visibleItems.length}건
         </span>
       </div>
@@ -89,12 +95,13 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
               <tr className="bg-surface-muted border-b border-border">
                 <th className="text-left px-3 py-2.5 text-xs font-semibold text-text-3">소재지</th>
                 <th className="text-left px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">용도</th>
-                <th className="text-right px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">감정가</th>
-                <th className="text-right px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">최저입찰가</th>
-                <th className="text-right px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">감정가 대비</th>
+                <SortHeader sortKey="apsl_evl_amt"    label="감정가" />
+                <SortHeader sortKey="lowst_bid_prc"   label="최저입찰가" />
+                <SortHeader sortKey="ratio_pct"       label="감정가 대비" />
+                <SortHeader sortKey="start_ratio_pct" label="시작가 대비" />
                 <th className="text-center px-3 py-2.5 text-xs font-semibold text-text-3">회차</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-text-3">유찰</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">마감일</th>
+                <SortHeader sortKey="usbd_nft"        label="유찰" align="center" />
+                <SortHeader sortKey="deadline"        label="마감일" align="center" />
                 <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
@@ -139,6 +146,13 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <RatioPill ratio={item.ratio_pct} />
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-sm tabular-nums">
+                      {item.start_ratio_pct != null ? (
+                        <span className="text-hot-fg font-medium">-{(100 - item.start_ratio_pct).toFixed(1)}%</span>
+                      ) : (
+                        <span className="text-text-4">-</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-sm text-text-2 tabular-nums">
                       {Number(item.pbct_nsq)}회차

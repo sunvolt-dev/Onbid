@@ -15,7 +15,7 @@ const DEFAULT_FILTER: FilterState = {
   usg_scls: "",
   bookmarked: null,
   pvct: null,
-  sort: "ratio",
+  sort: { key: "ratio_pct", dir: "asc" },
 };
 
 export function useItems() {
@@ -50,12 +50,22 @@ export function useItems() {
   }, []);
 
   const sorted = [...items].sort((a, b) => {
-    if (filter.sort === "ratio") return a.ratio_pct - b.ratio_pct;
-    if (filter.sort === "usbd") return b.usbd_nft - a.usbd_nft;
-    if (filter.sort === "deadline") {
-      return new Date(a.cltr_bid_end_dt).getTime() - new Date(b.cltr_bid_end_dt).getTime();
+    const dir = filter.sort.dir === "asc" ? 1 : -1;
+    switch (filter.sort.key) {
+      case "apsl_evl_amt":
+        return dir * ((a.apsl_evl_amt ?? 0) - (b.apsl_evl_amt ?? 0));
+      case "lowst_bid_prc":
+        return dir * ((a.lowst_bid_prc ?? 0) - (b.lowst_bid_prc ?? 0));
+      case "ratio_pct":
+        return dir * (a.ratio_pct - b.ratio_pct);
+      case "start_ratio_pct":
+        // null 은 정렬 끝(가장 큰 값)으로 — asc 면 마지막, desc 면 처음에서 무시
+        return dir * ((a.start_ratio_pct ?? 1e9) - (b.start_ratio_pct ?? 1e9));
+      case "usbd_nft":
+        return dir * (a.usbd_nft - b.usbd_nft);
+      case "deadline":
+        return dir * (new Date(a.cltr_bid_end_dt).getTime() - new Date(b.cltr_bid_end_dt).getTime());
     }
-    return 0;
   });
 
   return { items: sorted, loading, error, filter, setFilter, load };

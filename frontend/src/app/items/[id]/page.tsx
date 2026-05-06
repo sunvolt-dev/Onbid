@@ -15,7 +15,7 @@ type TabKey = "pricing" | "rights" | "field";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "pricing", label: "💰 가격 분석" },
-  { key: "rights", label: "⚖️ 권리 분석" },
+  { key: "rights", label: "⚖️ 유찰내역 & 권리 분석" },
   { key: "field", label: "📍 현장 정보" },
 ];
 

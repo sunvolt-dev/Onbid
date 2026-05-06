@@ -14,6 +14,7 @@ export interface BidItem {
   lowst_bid_prc: number;
   ratio_pct: number;
   frst_ratio_pct: number | null;
+  start_ratio_pct: number | null;  // BID_QUAL 의 최초(=최대) 최저입찰가 대비 현재가 비율
   usbd_nft: number;
   pbct_nsq: string;
   pvct_trgt_yn: string;
@@ -127,6 +128,19 @@ export interface MarketPriceResponse {
   } | null;
 }
 
+export type SortKey =
+  | "apsl_evl_amt"
+  | "lowst_bid_prc"
+  | "ratio_pct"
+  | "start_ratio_pct"
+  | "usbd_nft"
+  | "deadline";
+
+export interface SortState {
+  key: SortKey;
+  dir: "asc" | "desc";
+}
+
 export interface FilterState {
   ratio_min: number;
   ratio_max: number;
@@ -138,5 +152,5 @@ export interface FilterState {
   usg_scls: string;
   bookmarked: number | null;
   pvct: "Y" | "N" | null;
-  sort: "ratio" | "usbd" | "deadline";
+  sort: SortState;
 }

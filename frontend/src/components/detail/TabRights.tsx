@@ -2,9 +2,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchItemTenant } from "@/api";
+import { fetchItemHistory, fetchItemTenant } from "@/api";
 import { LabeledTable, type ColDef } from "@/components/LabeledTable";
-import type { BidItem, TenantInfo } from "@/types";
+import type { BidItem, BidQual, TenantInfo } from "@/types";
+import BidHistoryGroups from "./BidHistoryGroups";
 import DecisionBanner, { type DecisionStatus } from "./DecisionBanner";
 
 interface Props {
@@ -85,6 +86,10 @@ export default function TabRights({ item }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const [quals, setQuals] = useState<BidQual[]>([]);
+  const [histLoading, setHistLoading] = useState(true);
+  const [histError, setHistError] = useState(false);
+
   const isArrested = item.prpt_div_nm === "압류재산";
 
   useEffect(() => {
@@ -97,6 +102,13 @@ export default function TabRights({ item }: Props) {
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [item.cltr_mng_no, isArrested]);
+
+  useEffect(() => {
+    fetchItemHistory(item.cltr_mng_no)
+      .then(setQuals)
+      .catch(() => setHistError(true))
+      .finally(() => setHistLoading(false));
+  }, [item.cltr_mng_no]);
 
   // 구조적 리스크 4항목
   const risks: RiskItem[] = [
@@ -149,6 +161,22 @@ export default function TabRights({ item }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* 유찰 회차 내역 */}
+      <div>
+        <p className="text-sm font-semibold text-text-1 mb-3">유찰 회차 내역</p>
+        {histLoading ? (
+          <div className="text-sm text-text-4 animate-pulse py-8 text-center">로딩 중...</div>
+        ) : histError ? (
+          <div className="text-sm text-hot-fg py-8 text-center">입찰 이력을 불러올 수 없습니다.</div>
+        ) : quals.length === 0 ? (
+          <div className="rounded-lg bg-surface shadow-card text-center py-8 text-xs text-text-4">
+            입찰 회차 정보가 없습니다
+          </div>
+        ) : (
+          <BidHistoryGroups quals={quals} />
+        )}
+      </div>
+
       <DecisionBanner status={bannerStatus}>{bannerText}</DecisionBanner>
 
       {/* 임차인 섹션 */}

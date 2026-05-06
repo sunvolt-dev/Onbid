@@ -93,6 +93,13 @@ def get_items():
     ]
     if bookmarked == 1:
         cols.append("thnl_img_url")
+    # 시작가(BID_QUAL 의 최초 최저입찰가 = MAX) 대비 현재 lowst_bid_prc 비율.
+    # 회차가 진행될수록 가격이 하락하므로 MAX 가 곧 시작가.
+    cols.append(
+        "ROUND(lowst_bid_prc * 100.0 / NULLIF("
+        "(SELECT MAX(min_bd_prc) FROM BID_QUAL WHERE cltr_mng_no = BID_ITEMS.cltr_mng_no), 0), 2"
+        ") AS start_ratio_pct"
+    )
     select_cols = ", ".join(cols)
 
     conn = get_db()
