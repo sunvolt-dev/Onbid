@@ -1,7 +1,8 @@
 // frontend/src/components/detail/HeroSection.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchItemInfo } from "@/api";
 import { fmtKRW, sqmsToPyeong, dLabel, daysLeft } from "@/utils/format";
 import { useMarketPrice } from "@/hooks/useMarketPrice";
 import type { BidItem } from "@/types";
@@ -62,11 +63,38 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
   const { market } = useMarketPrice(item.cltr_mng_no);
   const discount = market?.comparison?.discount_from_market_pct ?? null;
   const [copied, setCopied] = useState(false);
+  const [apslPdfUrl, setApslPdfUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchItemInfo(item.cltr_mng_no)
+      .then((info) => {
+        if (cancelled) return;
+        const records = info.apsl_evl
+          .filter((r) => {
+            const u = r.url_adr;
+            return typeof u === "string" && u.trim().length > 0;
+          })
+          .sort((a, b) =>
+            String(b.apsl_evl_ymd ?? "").localeCompare(String(a.apsl_evl_ymd ?? "")),
+          );
+        if (records.length > 0) setApslPdfUrl(String(records[0].url_adr));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [item.cltr_mng_no]);
 
   async function handleOnbidClick() {
     await openOnbidWithClipboard(item.cltr_mng_no);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  }
+
+  function handleApslPdfClick() {
+    if (!apslPdfUrl) return;
+    window.open(apslPdfUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -200,9 +228,18 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
           </button>
           <button
             type="button"
+            onClick={handleApslPdfClick}
+            disabled={!apslPdfUrl}
+            title={apslPdfUrl ? "감정평가서 PDF 다운로드" : "감정평가서 PDF가 없습니다"}
+            className="flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-fg hover:bg-primary-hover transition-colors text-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            📄 감정평가서
+          </button>
+          <button
+            type="button"
             onClick={handleOnbidClick}
             title={`물건번호 복사 + 온비드 조건검색 열기 (${item.cltr_mng_no})`}
-            className="flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-fg hover:bg-primary-hover transition-colors text-center"
+            className="flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium bg-surface text-primary border border-primary/30 hover:bg-primary-subtle transition-colors text-center"
           >
             {copied ? "물건번호 복사됨 · 붙여넣기" : "온비드 →"}
           </button>
