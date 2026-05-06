@@ -85,6 +85,7 @@ def get_items():
         "cltr_mng_no", "onbid_cltr_nm",
         "cltr_usg_mcls_nm", "cltr_usg_scls_nm",
         "lctn_sd_nm", "lctn_sggn_nm",
+        "bld_sqms",
         "apsl_evl_amt", "lowst_bid_prc", "ratio_pct",
         "pbct_nsq", "usbd_nft",
         "cltr_bid_end_dt", "pvct_trgt_yn",

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { BidItem, FilterState } from "@/types";
-import { fmtAmt, daysLeft } from "@/utils/format";
+import { fmtAmt, daysLeft, sqmsToPyeong } from "@/utils/format";
 import { isNewToday } from "@/utils/itemFlags";
 import RatioPill from "@/components/ui/RatioPill";
 import DeadlineLabel from "@/components/ui/DeadlineLabel";
@@ -14,12 +14,6 @@ interface Props {
   items: BidItem[];
   filter: FilterState;
   onSortChange: (sort: FilterState["sort"]) => void;
-}
-
-function ratioDot(ratio: number): string {
-  if (ratio < 60) return "bg-hot-fg";
-  if (ratio < 70) return "bg-mid-fg";
-  return "bg-transparent";
 }
 
 export default function ItemTable({ items, filter, onSortChange }: Props) {
@@ -113,14 +107,13 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     key={item.cltr_mng_no}
                     className={`border-b border-border cursor-pointer transition-colors ${
                       pvct
-                        ? "bg-mid-bg/30 hover:bg-mid-bg/50 border-l-2 border-l-mid-fg"
+                        ? "bg-mid-bg/30 hover:bg-mid-bg/50"
                         : "hover:bg-surface-muted"
                     }`}
                     onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
                   >
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ratioDot(item.ratio_pct)}`} />
                         <span className="text-sm text-text-1 font-medium">
                           {item.onbid_cltr_nm}
                         </span>
@@ -131,7 +124,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                         )}
                       </div>
                       <div className="text-xs text-text-3 mt-0.5">
-                        {item.lctn_sd_nm} {item.lctn_sggn_nm}
+                        {item.cltr_usg_scls_nm} / {sqmsToPyeong(item.bld_sqms)}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
@@ -191,9 +184,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
               <button
                 key={item.cltr_mng_no}
                 onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
-                className={`text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1 ${
-                  pvct ? "border-l-2 border-l-mid-fg" : ""
-                }`}
+                className="text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-sm font-medium text-text-1 flex-1">
@@ -207,7 +198,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                       NEW
                     </span>
                   )}
-                  <span>{item.lctn_sd_nm} {item.lctn_sggn_nm}</span>
+                  <span>{item.cltr_usg_scls_nm} / {sqmsToPyeong(item.bld_sqms)}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-sm font-semibold text-primary tabular-nums">
@@ -221,23 +212,8 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
         </div>
       )}
 
-      {/* 범례 + 페이지네이션 */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-1">
-        <div className="flex items-center gap-4 text-xs text-text-4">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-hot-fg" />
-            <span>60% 미만</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-mid-fg" />
-            <span>60~70%</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full border border-border-strong" />
-            <span>70% 이상</span>
-          </div>
-        </div>
-
+      {/* 페이지네이션 */}
+      <div className="flex md:items-center md:justify-end gap-2 px-1">
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
             <button
