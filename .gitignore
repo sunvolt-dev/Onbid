@@ -15,6 +15,9 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 
+# 일회성 백필/유틸 스크립트
+data/_oneshot/
+
 # Basic Auth 비밀번호 파일 — 서버마다 별도 생성 (커밋 금지)
 nginx/.htpasswd
 
