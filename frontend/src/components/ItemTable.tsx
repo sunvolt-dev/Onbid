@@ -93,7 +93,6 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-surface-muted border-b border-border">
-                <th className="text-left px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">물건번호</th>
                 <th className="text-left px-3 py-2.5 text-xs font-semibold text-text-3">소재지</th>
                 <th className="text-left px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">용도</th>
                 <th className="text-right px-3 py-2.5 text-xs font-semibold text-text-3 whitespace-nowrap">감정가</th>
@@ -122,17 +121,14 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ratioDot(item.ratio_pct)}`} />
-                        <span className="text-xs text-text-3 font-mono">{item.cltr_mng_no}</span>
+                        <span className="text-sm text-text-1 font-medium">
+                          {item.onbid_cltr_nm}
+                        </span>
                         {isNewToday(item.first_collected_at) && (
                           <span className="text-[10px] bg-new text-primary-fg rounded-sm px-1.5 py-0.5 font-bold">
                             NEW
                           </span>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="text-sm text-text-1 font-medium truncate max-w-[180px]">
-                        {item.onbid_cltr_nm}
                       </div>
                       <div className="text-xs text-text-3 mt-0.5">
                         {item.lctn_sd_nm} {item.lctn_sggn_nm}
@@ -200,19 +196,17 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm font-medium text-text-1 truncate flex-1">
+                  <div className="text-sm font-medium text-text-1 flex-1">
                     {item.onbid_cltr_nm}
                   </div>
                   <RatioPill ratio={item.ratio_pct} />
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-text-3">
-                  <span className="font-mono">{item.cltr_mng_no}</span>
                   {isNewToday(item.first_collected_at) && (
                     <span className="text-[10px] bg-new text-primary-fg rounded-sm px-1.5 py-0.5 font-bold">
                       NEW
                     </span>
                   )}
-                  <span>·</span>
                   <span>{item.lctn_sd_nm} {item.lctn_sggn_nm}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1">
