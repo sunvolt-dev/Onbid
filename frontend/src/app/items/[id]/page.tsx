@@ -1,7 +1,7 @@
 // frontend/src/app/items/[id]/page.tsx
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchItem, toggleBookmark, refreshItem, checkItem } from "@/api";
@@ -13,11 +13,29 @@ import TabField from "@/components/detail/TabField";
 
 type TabKey = "pricing" | "rights" | "field";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "pricing", label: "💰 가격 분석" },
-  { key: "rights", label: "⚖️ 유찰내역 & 권리 분석" },
-  { key: "field", label: "📍 현장 정보" },
-];
+const TAB_LABELS: Record<TabKey, string> = {
+  rights: "⚖️ 유찰내역 & 권리 분석",
+  pricing: "💰 가격 분석",
+  field: "📍 현장 정보",
+};
+const DEFAULT_TAB_ORDER: TabKey[] = ["rights", "pricing", "field"];
+const TAB_ORDER_KEY = "onbid:item-tab-order";
+
+function loadTabOrder(): TabKey[] {
+  if (typeof window === "undefined") return DEFAULT_TAB_ORDER;
+  try {
+    const raw = localStorage.getItem(TAB_ORDER_KEY);
+    if (!raw) return DEFAULT_TAB_ORDER;
+    const parsed = JSON.parse(raw) as TabKey[];
+    const valid =
+      Array.isArray(parsed) &&
+      parsed.length === DEFAULT_TAB_ORDER.length &&
+      DEFAULT_TAB_ORDER.every((k) => parsed.includes(k));
+    return valid ? parsed : DEFAULT_TAB_ORDER;
+  } catch {
+    return DEFAULT_TAB_ORDER;
+  }
+}
 
 export default function ItemDetailPage({
   params,
@@ -29,7 +47,9 @@ export default function ItemDetailPage({
   const [item, setItem] = useState<BidItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("pricing");
+  const [tabOrder, setTabOrder] = useState<TabKey[]>(DEFAULT_TAB_ORDER);
+  const [activeTab, setActiveTab] = useState<TabKey>(DEFAULT_TAB_ORDER[0]);
+  const [draggingTab, setDraggingTab] = useState<TabKey | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [closed, setClosed] = useState(false);
 
@@ -56,6 +76,39 @@ export default function ItemDetailPage({
       .catch(() => {})
       .finally(() => setRefreshing(false));
   }, [id]);
+
+  useEffect(() => {
+    const stored = loadTabOrder();
+    setTabOrder(stored);
+    setActiveTab(stored[0]);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
+  }, [tabOrder]);
+
+  function handleTabDragStart(key: TabKey) {
+    setDraggingTab(key);
+  }
+
+  function handleTabDragOver(e: DragEvent<HTMLButtonElement>, overKey: TabKey) {
+    e.preventDefault();
+    if (!draggingTab || draggingTab === overKey) return;
+    setTabOrder((prev) => {
+      const fromIdx = prev.indexOf(draggingTab);
+      const toIdx = prev.indexOf(overKey);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const next = [...prev];
+      next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, draggingTab);
+      return next;
+    });
+  }
+
+  function handleTabDragEnd() {
+    setDraggingTab(null);
+  }
 
   async function handleBookmark() {
     if (!item) return;
@@ -145,19 +198,28 @@ export default function ItemDetailPage({
         {/* 탭 */}
         <div className="bg-surface shadow-card rounded-xl overflow-hidden">
           <div className="flex border-b border-border">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 px-3 py-3 text-sm whitespace-nowrap transition-colors ${
-                  activeTab === tab.key
-                    ? "border-b-2 border-primary text-primary font-semibold"
-                    : "text-text-3 hover:text-text-1 hover:bg-surface-muted"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {tabOrder.map((key) => {
+              const isActive = activeTab === key;
+              const isDragging = draggingTab === key;
+              return (
+                <button
+                  key={key}
+                  draggable
+                  onDragStart={() => handleTabDragStart(key)}
+                  onDragOver={(e) => handleTabDragOver(e, key)}
+                  onDragEnd={handleTabDragEnd}
+                  onClick={() => setActiveTab(key)}
+                  title="드래그하여 탭 순서를 바꿀 수 있습니다"
+                  className={`flex-1 px-3 py-3 text-sm whitespace-nowrap transition-colors cursor-grab active:cursor-grabbing select-none ${
+                    isActive
+                      ? "border-b-2 border-primary text-primary font-semibold"
+                      : "text-text-3 hover:text-text-1 hover:bg-surface-muted"
+                  } ${isDragging ? "opacity-50" : ""}`}
+                >
+                  {TAB_LABELS[key]}
+                </button>
+              );
+            })}
           </div>
 
           <div className="p-4 md:p-6">
