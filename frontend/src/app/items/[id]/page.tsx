@@ -88,12 +88,15 @@ export default function ItemDetailPage({
     localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
   }, [tabOrder]);
 
-  function handleTabDragStart(key: TabKey) {
+  function handleTabDragStart(e: DragEvent<HTMLDivElement>, key: TabKey) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", key);
     setDraggingTab(key);
   }
 
-  function handleTabDragOver(e: DragEvent<HTMLButtonElement>, overKey: TabKey) {
+  function handleTabDragOver(e: DragEvent<HTMLDivElement>, overKey: TabKey) {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
     if (!draggingTab || draggingTab === overKey) return;
     setTabOrder((prev) => {
       const fromIdx = prev.indexOf(draggingTab);
@@ -202,22 +205,31 @@ export default function ItemDetailPage({
               const isActive = activeTab === key;
               const isDragging = draggingTab === key;
               return (
-                <button
+                <div
                   key={key}
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={isActive}
                   draggable
-                  onDragStart={() => handleTabDragStart(key)}
+                  onDragStart={(e) => handleTabDragStart(e, key)}
                   onDragOver={(e) => handleTabDragOver(e, key)}
                   onDragEnd={handleTabDragEnd}
                   onClick={() => setActiveTab(key)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setActiveTab(key);
+                    }
+                  }}
                   title="드래그하여 탭 순서를 바꿀 수 있습니다"
-                  className={`flex-1 px-3 py-3 text-sm whitespace-nowrap transition-colors cursor-grab active:cursor-grabbing select-none ${
+                  className={`flex-1 px-3 py-3 text-sm text-center whitespace-nowrap transition-colors cursor-grab active:cursor-grabbing select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isActive
                       ? "border-b-2 border-primary text-primary font-semibold"
                       : "text-text-3 hover:text-text-1 hover:bg-surface-muted"
                   } ${isDragging ? "opacity-50" : ""}`}
                 >
                   {TAB_LABELS[key]}
-                </button>
+                </div>
               );
             })}
           </div>
