@@ -10,9 +10,9 @@ molit_fetcher.py
 
 [매칭 알고리즘 — 4단계 폴백]
   Tier 0: 같은 읍면동 + 같은 지번 (면적 무관, 같은 건물 확정)
-  Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±30%
-  Tier 2: 같은 읍면동 + 면적 ±30%
-  Tier 3: 같은 시군구 + 면적 ±30%
+  Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±50%
+  Tier 2: 같은 읍면동 + 면적 ±50%
+  Tier 3: 같은 시군구 + 면적 ±50%
 
 [캐시 전략]
   MOLIT_FETCH_LOG에 (lawd_cd, deal_ymd, api_type) 단위로 조회 여부 기록.
@@ -88,7 +88,7 @@ ALL_API_TYPES = ["officetel", "commercial", "apartment", "rowhouse", "detached"]
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "onbid.db")
 CACHE_EXPIRE_DAYS = 30
-AREA_TOLERANCE = 0.3       # 면적 ±30%
+AREA_TOLERANCE = 0.5       # 면적 ±50% (다른 평수 실거래도 평당가 환산으로 활용)
 SLEEP_SEC = 0.2            # API 호출 간 대기
 LOOKBACK_MONTHS = 24       # 조회할 과거 개월 수 (개별 건물 거래는 1~3년에 1건 수준이라 24개월로 확장)
 
@@ -338,7 +338,9 @@ def _name_match(a: str | None, b: str | None) -> bool:
 
 
 def _area_match(onbid_area: float, trade_area: float) -> bool:
-    """면적 범위 매칭. ±AREA_TOLERANCE 이내."""
+    """면적 범위 매칭. ±AREA_TOLERANCE 이내.
+    같은 건물명이라도 평수가 다른 호실이 많아 ±50%로 넓힘 — 단가(평당가)는
+    동일 건물이면 면적 무관하게 유사하므로 환산용으로 안전하다."""
     if not onbid_area or not trade_area:
         return False
     ratio = trade_area / onbid_area
@@ -453,7 +455,7 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
         if tier0:
             return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area, exclusive_ratio)
 
-    # Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±30%
+    # Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±50%
     # (지번 파싱 실패한 도로명주소 케이스 구명줄)
     tier1 = [
         t for t in trades

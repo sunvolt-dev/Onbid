@@ -8,6 +8,7 @@ run_pipeline.py
   2단계: onbid_detail_collector.py    — 물건 상세 수집
   3단계: onbid_bid_collector.py       — 입찰정보 수집
   4단계: molit_batch_prefetch.py      — 실거래가 사전 수집
+  5단계: molit_match_refresh.py       — 물건별 시세 매칭 캐시 갱신
 
 중단 조건:
   - 1단계 실행 후 COLLECTION_LOG에 오늘 성공한 그룹이 하나도 없으면 중단
@@ -183,6 +184,9 @@ def main():
 
         # 4단계: 국토교통부 실거래가 사전 수집
         run_step("molit_batch_prefetch.py")
+
+        # 5단계: 물건별 시세 매칭 캐시 갱신 (목록의 실거래 마크 표시용)
+        run_step("molit_match_refresh.py")
 
         # 일일 스냅샷 기록 (분석 트렌드용)
         write_daily_snapshot()

@@ -22,6 +22,16 @@ def get_db():
     return conn
 
 
+# 앱 시작 시 MOLIT 관련 테이블이 존재하도록 보장.
+# /api/items가 MOLIT_MATCH를 LEFT JOIN하므로 비어있어도 테이블 자체는 있어야 한다.
+try:
+    from db.schema_molit import init_molit_db as _init_molit
+    with sqlite3.connect(DB_PATH) as _conn:
+        _init_molit(_conn)
+except Exception:
+    pass  # DB 미존재 등 — collector가 먼저 만들 때까지 무시
+
+
 # ─────────────────────────────────────────
 # GET /api/items
 # 목록 + 필터 + 정렬
@@ -82,7 +92,7 @@ def get_items():
     # 리스트 렌더링에 필요한 컬럼만 선택 (SELECT * 대비 ~65% 페이로드 감소)
     # thnl_img_url 은 BookmarkCard 에서만 쓰이므로 bookmarked 필터 시에만 포함
     cols = [
-        "cltr_mng_no", "onbid_cltr_nm",
+        "BID_ITEMS.cltr_mng_no AS cltr_mng_no", "onbid_cltr_nm",
         "cltr_usg_mcls_nm", "cltr_usg_scls_nm",
         "lctn_sd_nm", "lctn_sggn_nm",
         "bld_sqms",
@@ -100,12 +110,20 @@ def get_items():
         "(SELECT MAX(min_bd_prc) FROM BID_QUAL WHERE cltr_mng_no = BID_ITEMS.cltr_mng_no), 0), 2"
         ") AS start_ratio_pct"
     )
+    # 실거래 매칭 캐시(MOLIT_MATCH) — 같은 건물 거래가 있는지 마크용
+    cols.append("mm.match_tier AS market_match_tier")
+    cols.append("mm.match_count AS market_match_count")
     select_cols = ", ".join(cols)
 
     conn = get_db()
     try:
         rows = conn.execute(
-            f"SELECT {select_cols} FROM BID_ITEMS WHERE {where} ORDER BY ratio_pct ASC LIMIT ?",
+            f"""SELECT {select_cols}
+                FROM BID_ITEMS
+                LEFT JOIN MOLIT_MATCH mm
+                       ON mm.cltr_mng_no = BID_ITEMS.cltr_mng_no
+                WHERE {where}
+                ORDER BY ratio_pct ASC LIMIT ?""",
             params,
         ).fetchall()
     finally:

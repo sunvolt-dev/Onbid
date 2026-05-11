@@ -47,6 +47,20 @@ def init_molit_db(conn: sqlite3.Connection):
 
             UNIQUE(lawd_cd, deal_ymd, api_type)
         );
+
+        -- 물건별 시세 매칭 결과 캐시.
+        -- 파이프라인 5단계(molit_match_refresh)가 active 물건에 대해 일괄 갱신.
+        -- 행이 존재하고 match_tier IS NOT NULL → 같은 건물 실거래 매칭 성공.
+        -- 행이 존재하고 match_tier IS NULL → 매칭 시도했으나 실패(no_data).
+        -- 행이 없으면 → 아직 매칭 시도하지 않음.
+        CREATE TABLE IF NOT EXISTS MOLIT_MATCH (
+            cltr_mng_no                 TEXT PRIMARY KEY,
+            match_tier                  INTEGER,      -- 0=같은 지번, 1=같은 건물명, NULL=no_data
+            match_count                 INTEGER,
+            avg_unit_price              REAL,         -- 만원/㎡
+            estimated_market_price_won  INTEGER,
+            matched_at                  TEXT DEFAULT (datetime('now', 'localtime'))
+        );
     """)
     # 기존 DB 마이그레이션: jibun 컬럼 추가
     try:

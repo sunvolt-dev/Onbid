@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { FilterState } from "@/types";
 
 const USG_TREE: Record<string, string[]> = {
-  "상가용및업무용건물": ["업무시설"],
+  "상가용및업무용건물": ["업무시설", "기타상가용및업무용"],
   "용도복합용건물": ["오피스텔", "주/상용건물"],
 };
 

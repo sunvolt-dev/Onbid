@@ -51,6 +51,11 @@ QUERY_GROUPS = [
         "cltrUsgSclsCtgrNm": "업무시설",
     },
     {
+        "label": "상가용및업무용건물 > 기타상가용및업무용",
+        "cltrUsgMclsCtgrNm": "상가용및업무용건물",
+        "cltrUsgSclsCtgrNm": "기타상가용및업무용",
+    },
+    {
         "label": "용도복합용건물 > 주/상용건물",
         "cltrUsgMclsCtgrNm": "용도복합용건물",
         "cltrUsgSclsCtgrNm": "주/상용건물",

@@ -166,7 +166,7 @@ function StatusBanner({ icon, title, desc, extra }: { icon: string; title: strin
 }
 
 function MarketSection({ market }: { market: MarketPriceResponse }) {
-  const { summary, transactions, match_tier, match_count } = market;
+  const { summary, transactions, match_tier, match_count, comparison } = market;
 
   const unitPrices = transactions
     .map((tx) => tx.unit_price)
@@ -174,8 +174,41 @@ function MarketSection({ market }: { market: MarketPriceResponse }) {
   const minUnit = unitPrices.length > 0 ? Math.min(...unitPrices) : null;
   const maxUnit = unitPrices.length > 0 ? Math.max(...unitPrices) : null;
 
+  const SQM_PER_PYEONG = 3.3058;
+  const estimated = summary?.estimated_market_price_won ?? null;
+  const avgUnitSqm = summary?.avg_unit_price ?? null;             // 만원/㎡
+  const effectiveSqm = summary?.effective_area_sqm ?? null;       // 전용㎡
+  const avgUnitPyeong = avgUnitSqm != null ? avgUnitSqm * SQM_PER_PYEONG : null;
+  const effectivePyeong = effectiveSqm != null ? effectiveSqm / SQM_PER_PYEONG : null;
+  const discountPct = comparison?.discount_from_market_pct ?? null;
+
   return (
     <>
+      {estimated != null && (
+        <div className="bg-primary/10 border border-primary/30 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-primary">실거래 기반 추정 시세</p>
+            <span className="text-[10px] text-text-4 bg-surface px-2 py-0.5 rounded-full">
+              {TIER_LABELS[match_tier ?? 0] ?? ""} / {match_count}건
+            </span>
+          </div>
+          <p className="text-3xl font-bold text-primary tabular-nums">{fmtAmt(estimated)}</p>
+          {avgUnitPyeong != null && effectivePyeong != null && effectiveSqm != null && (
+            <p className="text-xs text-text-3 mt-2 tabular-nums">
+              평당 {avgUnitPyeong.toFixed(0)}만원 × 전용 {effectivePyeong.toFixed(1)}평 ({effectiveSqm.toFixed(1)}㎡)
+            </p>
+          )}
+          {discountPct != null && (
+            <p className={`text-xs mt-1 font-medium tabular-nums ${discountPct > 0 ? "text-ok-fg" : "text-hot-fg"}`}>
+              현재 최저입찰가는 추정 시세 대비 {discountPct > 0 ? "-" : "+"}{Math.abs(discountPct).toFixed(1)}% {discountPct > 0 ? "저렴" : "비쌈"}
+            </p>
+          )}
+          <p className="text-[10px] text-text-4 mt-2">
+            * 면적이 다른 같은 건물 거래는 평당가 기준으로 이 물건 면적에 맞춰 환산
+          </p>
+        </div>
+      )}
+
       <div className="bg-surface shadow-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-semibold text-text-1">실거래 단가 통계</p>

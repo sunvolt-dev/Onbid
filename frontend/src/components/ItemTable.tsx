@@ -7,6 +7,7 @@ import { fmtAmt, daysLeft, sqmsToPyeong } from "@/utils/format";
 import { isNewToday } from "@/utils/itemFlags";
 import RatioPill from "@/components/ui/RatioPill";
 import DeadlineLabel from "@/components/ui/DeadlineLabel";
+import ExternalSiteMenu from "@/components/ui/ExternalSiteMenu";
 
 const PAGE_SIZE = 50;
 
@@ -38,11 +39,23 @@ const COLUMNS: Record<ColumnKey, ColumnDef> = {
     align: "left",
     cell: (item) => (
       <>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-sm text-text-1 font-medium">{item.onbid_cltr_nm}</span>
           {isNewToday(item.first_collected_at) && (
             <span className="text-[10px] bg-new text-primary-fg rounded-sm px-1.5 py-0.5 font-bold">
               NEW
+            </span>
+          )}
+          {item.market_match_tier != null && (
+            <span
+              title={
+                item.market_match_tier === 0
+                  ? "같은 지번 실거래 매칭"
+                  : "같은 건물명 실거래 매칭"
+              }
+              className="text-[10px] bg-ok-bg text-ok-fg rounded-sm px-1.5 py-0.5 font-bold"
+            >
+              실거래 {item.market_match_count ?? 0}건
             </span>
           )}
         </div>
@@ -333,7 +346,7 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                   <tr
                     key={item.cltr_mng_no}
                     className={`border-b border-border cursor-pointer transition-colors ${
-                      pvct ? "bg-mid-bg/30 hover:bg-mid-bg/50" : "hover:bg-surface-muted"
+                      pvct ? "bg-surface hover:bg-surface-muted" : "bg-primary-subtle/60 hover:bg-primary-subtle"
                     }`}
                     onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
                   >
@@ -346,16 +359,8 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2.5 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/items/${item.cltr_mng_no}`);
-                        }}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        상세 →
-                      </button>
+                    <td className="px-2 py-2.5 text-right w-px whitespace-nowrap">
+                      <ExternalSiteMenu item={item} />
                     </td>
                   </tr>
                 );
@@ -372,10 +377,18 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
             const dl = daysLeft(item.cltr_bid_end_dt);
             const pvct = dl < 0 && item.pvct_trgt_yn === "Y";
             return (
-              <button
+              <div
                 key={item.cltr_mng_no}
+                role="button"
+                tabIndex={0}
                 onClick={() => router.push(`/items/${item.cltr_mng_no}`)}
-                className="text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/items/${item.cltr_mng_no}`);
+                  }
+                }}
+                className="text-left bg-surface shadow-card rounded-lg p-3 flex flex-col gap-1 cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-sm font-medium text-text-1 flex-1">
@@ -383,10 +396,15 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                   </div>
                   <RatioPill ratio={item.ratio_pct} />
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-text-3">
+                <div className="flex items-center gap-1.5 text-xs text-text-3 flex-wrap">
                   {isNewToday(item.first_collected_at) && (
                     <span className="text-[10px] bg-new text-primary-fg rounded-sm px-1.5 py-0.5 font-bold">
                       NEW
+                    </span>
+                  )}
+                  {item.market_match_tier != null && (
+                    <span className="text-[10px] bg-ok-bg text-ok-fg rounded-sm px-1.5 py-0.5 font-bold">
+                      실거래 {item.market_match_count ?? 0}건
                     </span>
                   )}
                   <span>{item.cltr_usg_scls_nm} / {sqmsToPyeong(item.bld_sqms)}</span>
@@ -397,7 +415,10 @@ export default function ItemTable({ items, filter, onSortChange }: Props) {
                   </span>
                   <DeadlineLabel dt={item.cltr_bid_end_dt} pvct={pvct} />
                 </div>
-              </button>
+                <div className="flex items-center justify-end mt-1">
+                  <ExternalSiteMenu item={item} />
+                </div>
+              </div>
             );
           })}
         </div>

@@ -38,6 +38,9 @@ export interface BidItem {
   icdl_cdtn_cont: string | null;
   zadr_nm: string | null;
   cltr_radr: string | null;
+  // 실거래 매칭 캐시(MOLIT_MATCH). null = 아직 갱신 안 됨, 매칭 실패도 null로 옴
+  market_match_tier?: number | null;     // 0=같은 지번, 1=같은 건물명
+  market_match_count?: number | null;
   score?: number;
   score_breakdown?: {
     ratio: number;
