@@ -27,13 +27,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema_molit import init_molit_db
 from molit_fetcher import (
     get_market_price,
-    EXCLUSIVE_RATIO,
-    DEFAULT_EXCLUSIVE_RATIO,
-)
-from lawd_code import get_lawd_cd
-from molit_fetcher import (
     extract_building_name, extract_jibun, match_trades,
 )
+from lawd_code import get_lawd_cd
 
 # molit_fetcher.USG_TO_ALLOWED_TYPES 가 모듈 레벨에 정의되어 있으면 import
 try:
@@ -47,7 +43,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 
 def refresh_one(conn: sqlite3.Connection, item: sqlite3.Row) -> dict:
@@ -59,13 +55,11 @@ def refresh_one(conn: sqlite3.Connection, item: sqlite3.Row) -> dict:
     usg_scls = item["cltr_usg_scls_nm"]
     bldg_name = extract_building_name(item["onbid_cltr_nm"])
     jibun = extract_jibun(item["onbid_cltr_nm"], item["zadr_nm"])
-    ratio = EXCLUSIVE_RATIO.get(usg_scls, DEFAULT_EXCLUSIVE_RATIO)
-    effective_area = item["bld_sqms"] * ratio if item["bld_sqms"] else None
     allowed_types = USG_TO_ALLOWED_TYPES.get(usg_scls) if USG_TO_ALLOWED_TYPES else None
 
     result = match_trades(
-        conn, lawd_cd, item["lctn_emd_nm"], bldg_name, effective_area,
-        jibun, api_types=allowed_types, exclusive_ratio=ratio,
+        conn, lawd_cd, item["lctn_emd_nm"], bldg_name, item["bld_sqms"],
+        jibun, api_types=allowed_types,
     )
 
     if result.get("status") != "ok":

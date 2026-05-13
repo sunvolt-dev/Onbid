@@ -24,6 +24,7 @@ BID_ITEMS(물건목록)에서 cltrMngNo + pbctCdtnNo 를 읽어
 ─────────────────────────────────────────────────────────────────────────────
 """
 
+import os
 import sqlite3
 import requests
 import logging
@@ -36,7 +37,7 @@ from utils import to_int, to_float, to_str, now_str, to_list
 # ─────────────────────────────────────────
 SERVICE_KEY = "6iR4qqcBwiAX7zyA083ZtxKj8tyKGksMrFQsWMqvlmR5qFgGmpy6Vha4C4K1TuOHGpuztCn9MeMfmdftuC%2BoyQ%3D%3D"
 DETAIL_URL  = "https://apis.data.go.kr/B010003/OnbidRlstDtlSrvc/getRlstDtlInf"
-DB_PATH     = "onbid.db"
+DB_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 SLEEP_SEC       = 0.15   # API 10 tps 제한 → 호출 간 대기(초)
 BATCH_SIZE      = 50     # 한 번에 처리할 물건 수 (메모리 절약)

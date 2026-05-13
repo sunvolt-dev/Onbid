@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "collector"))
 app = Flask(__name__)
 CORS(app)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "collector", "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 
 def get_db():

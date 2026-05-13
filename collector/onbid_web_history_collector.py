@@ -45,7 +45,7 @@ from utils import to_int, to_str, now_str
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
-DB_PATH    = "onbid.db"
+DB_PATH    = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 SEARCH_URL = "https://www.onbid.co.kr/op/cltrpbancinf/cltr/cltrcdtnsrch/CltrCdtnSrchController/mvmnCltrCdtnSrchClg.do"
 DTL_URL    = "https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"

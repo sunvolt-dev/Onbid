@@ -44,7 +44,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 # on-demand(get_market_price)와 동일하게 24개월.
 # 공매 물건은 비인기 건물이 많아 거래 빈도가 낮으므로 기간을 넉넉히 잡는다.

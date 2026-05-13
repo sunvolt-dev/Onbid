@@ -177,9 +177,9 @@ function MarketSection({ market }: { market: MarketPriceResponse }) {
   const SQM_PER_PYEONG = 3.3058;
   const estimated = summary?.estimated_market_price_won ?? null;
   const avgUnitSqm = summary?.avg_unit_price ?? null;             // 만원/㎡
-  const effectiveSqm = summary?.effective_area_sqm ?? null;       // 전용㎡
+  const areaSqm = summary?.area_sqm ?? null;                      // ㎡ (온비드 bld_sqms)
   const avgUnitPyeong = avgUnitSqm != null ? avgUnitSqm * SQM_PER_PYEONG : null;
-  const effectivePyeong = effectiveSqm != null ? effectiveSqm / SQM_PER_PYEONG : null;
+  const areaPyeong = areaSqm != null ? areaSqm / SQM_PER_PYEONG : null;
   const discountPct = comparison?.discount_from_market_pct ?? null;
 
   return (
@@ -193,9 +193,9 @@ function MarketSection({ market }: { market: MarketPriceResponse }) {
             </span>
           </div>
           <p className="text-3xl font-bold text-primary tabular-nums">{fmtAmt(estimated)}</p>
-          {avgUnitPyeong != null && effectivePyeong != null && effectiveSqm != null && (
+          {avgUnitPyeong != null && areaPyeong != null && areaSqm != null && (
             <p className="text-xs text-text-3 mt-2 tabular-nums">
-              평당 {avgUnitPyeong.toFixed(0)}만원 × 전용 {effectivePyeong.toFixed(1)}평 ({effectiveSqm.toFixed(1)}㎡)
+              평당 {avgUnitPyeong.toFixed(0)}만원 × {areaPyeong.toFixed(1)}평 ({areaSqm.toFixed(1)}㎡)
             </p>
           )}
           {discountPct != null && (

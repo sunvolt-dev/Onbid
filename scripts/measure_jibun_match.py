@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "collector"))
 
 from collector.molit_fetcher import extract_jibun, extract_building_name, _jibun_match
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "collector", "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 
 def split_jibun(j: str | None) -> tuple[str | None, str | None]:

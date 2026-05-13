@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "collector"))
 from collector.molit_fetcher import extract_jibun, USG_TO_ALLOWED_TYPES
 from collector.lawd_code import get_lawd_cd
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "collector", "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 
 def split_jibun(j: str | None):

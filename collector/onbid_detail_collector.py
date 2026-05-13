@@ -46,7 +46,7 @@ from db.schema_detail import init_detail_db
 # ─────────────────────────────────────────
 SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
 DETAIL_URL  = "https://apis.data.go.kr/B010003/OnbidRlstDtlSrvc2/getRlstDtlInf2"
-DB_PATH     = "onbid.db"
+DB_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 SLEEP_SEC       = 0.15   # API 10 tps 제한 → 호출 간 대기(초)
 BATCH_SIZE      = 50     # 한 번에 처리할 물건 수 (메모리 절약)
@@ -66,11 +66,16 @@ log = logging.getLogger(__name__)
 # ─────────────────────────────────────────
 # API 호출
 # ─────────────────────────────────────────
+class RateLimitExceeded(Exception):
+    """API 일일 한도(429) 초과 — 더 호출해도 모두 실패하므로 즉시 종료 신호."""
+
+
 def fetch_detail(cltr_mng_no: str, pbct_cdtn_no) -> dict | None:
     """물건상세 조회 API 호출. 성공 시 item dict 반환, 실패 시 None.
 
     serviceKey는 이미 URL 인코딩된 값이므로 params 딕셔너리에 넣지 않고
     URL에 직접 포함시킨다. (params 딕셔너리 방식은 이중 인코딩 발생)
+    429(Too Many Requests)는 RateLimitExceeded로 호출자에게 전파한다.
     """
     # serviceKey → URL에 직접 삽입 (이중 인코딩 방지)
     # 나머지 파라미터는 requests가 안전하게 인코딩하도록 params 딕셔너리 사용
@@ -87,8 +92,12 @@ def fetch_detail(cltr_mng_no: str, pbct_cdtn_no) -> dict | None:
 
     try:
         res = requests.get(base, params=params, timeout=15)
+        if res.status_code == 429:
+            raise RateLimitExceeded(f"[{cltr_mng_no}] 429 Too Many Requests")
         res.raise_for_status()
         data = res.json()
+    except RateLimitExceeded:
+        raise
     except Exception as e:
         log.error(f"  [{cltr_mng_no}] API 요청 실패: {e}")
         return None
@@ -431,11 +440,18 @@ def main():
 
         success = 0
         fail    = 0
+        aborted = False
 
         for idx, (cltr_mng_no, pbct_cdtn_no) in enumerate(pending, 1):
             log.info(f"[{idx}/{total}] {cltr_mng_no} (공매조건번호={pbct_cdtn_no})")
 
-            item = fetch_detail(cltr_mng_no, pbct_cdtn_no)
+            try:
+                item = fetch_detail(cltr_mng_no, pbct_cdtn_no)
+            except RateLimitExceeded as e:
+                log.error(f"  ⛔ API 일일 한도 초과 → 처리 중단 ({e})")
+                log.error(f"  지금까지: 성공 {success} / 실패 {fail} / 미처리 {total - idx + 1}")
+                aborted = True
+                break
 
             if item:
                 try:
@@ -472,7 +488,8 @@ def main():
         conn.commit()
 
         log.info("=" * 55)
-        log.info(f"상세 조회 완료 | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
+        status = "중단됨" if aborted else "완료"
+        log.info(f"상세 조회 {status} | 성공: {success}건 / 실패: {fail}건 / 전체: {total}건")
     finally:
         conn.close()
 

@@ -38,7 +38,7 @@ from db.schema_bid import init_bid_db
 # ─────────────────────────────────────────
 SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
 BID_URL     = "https://apis.data.go.kr/B010003/OnbidCltrBidDtlSrvc2/getCltrBidInf2"
-DB_PATH     = "onbid.db"
+DB_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 SLEEP_SEC     = 0.15   # API 10 tps 제한 → 호출 간 대기(초)
 BATCH_SIZE    = 50     # 중간 커밋 단위

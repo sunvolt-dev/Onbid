@@ -23,7 +23,7 @@ from processor.query import query_items
 # ─────────────────────────────────────────
 SERVICE_KEY = urllib.parse.quote(os.environ["ONBID_API_KEY"], safe="")
 BASE_URL    = "https://apis.data.go.kr/B010003/OnbidRlstListSrvc2/getRlstCltrList2"
-DB_PATH     = "onbid.db"
+DB_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 NUM_OF_ROWS = 100   # 페이지당 최대 수집 건수
 MAX_PAGES   = 1000    # 그룹당 최대 페이지 수 (최대 1,000건)

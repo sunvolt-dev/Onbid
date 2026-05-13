@@ -30,7 +30,7 @@ from datetime import datetime, date
 # ─────────────────────────────────────────
 # 설정
 # ─────────────────────────────────────────
-DB_PATH     = "onbid.db"
+DB_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 CRON_LOG    = os.path.join(SCRIPTS_DIR, "cron_history.log")
 

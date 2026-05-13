@@ -24,7 +24,7 @@ services:
     expose: ["8000"]
     env_file: .env
     volumes:
-      - ./data:/data
+      - ./data:/app/data
     networks: [onbid_net]
     restart: unless-stopped
 
@@ -70,7 +70,7 @@ services:
     working_dir: /app/collector
     env_file: .env
     volumes:
-      - ./data:/data
+      - ./data:/app/data
     networks: [onbid_net]
 
 networks:

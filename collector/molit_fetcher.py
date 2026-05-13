@@ -73,20 +73,13 @@ USG_TO_ALLOWED_TYPES = {
     "주/상용건물":  ["commercial", "rowhouse", "officetel"],
 }
 
-# 온비드 bld_sqms(건물면적=공급/계약면적) → 전용면적 추정 비율.
-# MOLIT 실거래가는 전용면적(excluUseAr) 기준이므로 보정 없이 비교/계산하면
-# 추정 시세가 체계적으로 50~100% 과대평가된다.
-# 값은 용도별 일반 전용률 근사치(오피스텔 ~50%, 업무/상업 ~55%).
-EXCLUSIVE_RATIO = {
-    "오피스텔":     0.50,
-    "업무시설":     0.55,
-    "주/상용건물":  0.55,
-}
-DEFAULT_EXCLUSIVE_RATIO = 0.55
+# 온비드 bld_sqms와 MOLIT excluUseAr 비교 검증 결과(2026-05),
+# 두 값은 같은 건물에서 동일 단위로 보이며 공급/전용 별도 구분이 API에 없다.
+# 따라서 bld_sqms를 그대로 시세 계산에 사용한다.
 
 ALL_API_TYPES = ["officetel", "commercial", "apartment", "rowhouse", "detached"]
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 CACHE_EXPIRE_DAYS = 30
 AREA_TOLERANCE = 0.5       # 면적 ±50% (다른 평수 실거래도 평당가 환산으로 활용)
 SLEEP_SEC = 0.2            # API 호출 간 대기
@@ -396,14 +389,12 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
                  dong_nm: str, bldg_name: str | None,
                  area: float | None,
                  jibun: str | None = None,
-                 api_types: list[str] | None = None,
-                 exclusive_ratio: float | None = None) -> dict:
+                 api_types: list[str] | None = None) -> dict:
     """캐시된 거래 데이터에서 3단계 폴백으로 유사 거래를 찾는다.
 
     Args:
         api_types: 매칭 대상 api_type 화이트리스트. None이면 전체.
-        exclusive_ratio: 추정 시세 계산 시 사용할 전용률 (메타데이터용).
-        area: 이미 전용면적으로 보정된 값이어야 한다.
+        area: 온비드 bld_sqms (㎡). 면적 매칭 및 추정 시세 계산에 사용.
 
     Returns:
         {
@@ -453,7 +444,7 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
             and _jibun_match(jibun, t.get("jibun"))
         ]
         if tier0:
-            return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area, exclusive_ratio)
+            return _build_result(tier0, 0, "같은 읍면동 + 같은 지번 (같은 건물)", area)
 
     # Tier 1: 같은 읍면동 + 같은 건물명 + 면적 ±50%
     # (지번 파싱 실패한 도로명주소 케이스 구명줄)
@@ -464,7 +455,7 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
         and (area is None or _area_match(area, t["exclu_use_ar"]))
     ]
     if tier1:
-        return _build_result(tier1, 1, "같은 읍면동 + 같은 건물 + 유사면적", area, exclusive_ratio)
+        return _build_result(tier1, 1, "같은 읍면동 + 같은 건물 + 유사면적", area)
 
     # 읍면동/시군구 평균 기반 Tier 2, 3은 제거됨.
     # 전혀 다른 건물의 거래를 평균에 섞어 시세를 50~100% 왜곡하는 원인이 되어
@@ -474,21 +465,19 @@ def match_trades(conn: sqlite3.Connection, lawd_cd: str,
 
 
 def _build_result(trades: list[dict], tier: int, label: str,
-                  effective_area: float | None,
-                  exclusive_ratio: float | None) -> dict:
+                  area: float | None) -> dict:
     """매칭된 거래 목록으로 응답 객체를 구성.
 
-    effective_area: 전용면적 단위로 보정된 온비드 면적 (㎡).
-                    MOLIT 단가(전용㎡당 만원)와 곱해 실제 시세에 가깝게 추정한다.
+    area: 온비드 bld_sqms (㎡). MOLIT 평균 단가와 곱해 추정 시세를 계산.
     """
-    # ㎡당 단가 계산 (만원/전용㎡)
+    # ㎡당 단가 계산 (만원/㎡)
     unit_prices = [t["unit_price"] for t in trades if t["unit_price"]]
     avg_up = round(sum(unit_prices) / len(unit_prices), 1) if unit_prices else None
 
-    # 추정 시세 = 평균 전용㎡ 단가 × 보정된 전용면적
+    # 추정 시세 = 평균 ㎡ 단가 × 물건 면적
     estimated = None
-    if avg_up and effective_area:
-        estimated = round(avg_up * effective_area * 10000)  # 만원 → 원
+    if avg_up and area:
+        estimated = round(avg_up * area * 10000)  # 만원 → 원
 
     # 최근 거래월
     latest = None
@@ -519,8 +508,7 @@ def _build_result(trades: list[dict], tier: int, label: str,
             "avg_unit_price": avg_up,
             "estimated_market_price_won": estimated,
             "latest_deal": latest,
-            "effective_area_sqm": effective_area,
-            "assumed_exclusive_ratio": exclusive_ratio,
+            "area_sqm": area,
         },
         "comparison": None,  # API 엔드포인트에서 입찰가 비교 추가
     }
@@ -568,10 +556,6 @@ def get_market_price(conn: sqlite3.Connection,
     primary_types = USG_TO_PRIMARY.get(usg_scls, ["officetel", "commercial"])
     secondary_types = [t for t in ALL_API_TYPES if t not in primary_types]
 
-    # 전용면적 보정: 온비드 bld_sqms(공급/계약면적)을 MOLIT 전용면적 단위로 맞춘다.
-    ratio = EXCLUSIVE_RATIO.get(usg_scls, DEFAULT_EXCLUSIVE_RATIO)
-    effective_area = bld_sqms * ratio if bld_sqms else None
-
     # 매칭 대상 api_type 화이트리스트: 용도와 무관한 타입은 평균에서 배제.
     allowed_types = USG_TO_ALLOWED_TYPES.get(usg_scls)
 
@@ -585,8 +569,8 @@ def get_market_price(conn: sqlite3.Connection,
                 time.sleep(SLEEP_SEC)
 
     # 3b) 우선 API 결과로 매칭 시도
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, effective_area,
-                          jibun, api_types=allowed_types, exclusive_ratio=ratio)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms,
+                          jibun, api_types=allowed_types)
 
     if result["status"] == "ok" and result.get("match_tier") in (0, 1, 2):
         log.info(f"우선 API {api_called}콜로 Tier {result['match_tier']} 매칭 ({lawd_cd})")
@@ -604,8 +588,8 @@ def get_market_price(conn: sqlite3.Connection,
         log.info(f"전체 API {api_called}콜 사용 ({lawd_cd})")
 
     # 3d) 전체 캐시로 재매칭 (화이트리스트는 유지)
-    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, effective_area,
-                          jibun, api_types=allowed_types, exclusive_ratio=ratio)
+    result = match_trades(conn, lawd_cd, emd_nm, bldg_name, bld_sqms,
+                          jibun, api_types=allowed_types)
 
     return result
 

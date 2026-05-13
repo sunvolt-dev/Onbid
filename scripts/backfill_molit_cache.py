@@ -21,7 +21,7 @@ from collector.molit_fetcher import (
 from collector.lawd_code import get_lawd_cd
 from db.schema_molit import init_molit_db
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "collector", "onbid.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "onbid.db")
 
 
 def main():
