@@ -207,35 +207,12 @@ def get_item(item_id):
 
     d = dict(item)
 
-    # AI 투자 점수 계산 (단건)
+    # AI 투자 점수 계산 (단건) — refresh_item 과 동일 로직 공유
     conn2 = get_db()
     try:
-        # 이 물건의 시작가(MAX min_bd_prc) / 시세가(estimated_market_price_won)
-        d["start_price"] = conn2.execute(
-            "SELECT MAX(min_bd_prc) FROM BID_QUAL WHERE cltr_mng_no = ?", (item_id,)
-        ).fetchone()[0]
-        mp = conn2.execute(
-            "SELECT estimated_market_price_won FROM MOLIT_MATCH WHERE cltr_mng_no = ?", (item_id,)
-        ).fetchone()
-        d["market_price"] = mp[0] if mp else None
-
-        # active 풀 전체의 price_ratio 정규화 기준 (목록과 동일하게 p95 winsorize)
-        pool = conn2.execute(
-            """
-            SELECT (SELECT MAX(min_bd_prc) FROM BID_QUAL q WHERE q.cltr_mng_no = b.cltr_mng_no) AS sp,
-                   mm.estimated_market_price_won AS mp
-            FROM BID_ITEMS b
-            LEFT JOIN MOLIT_MATCH mm ON mm.cltr_mng_no = b.cltr_mng_no
-            WHERE b.status = 'active'
-            """
-        ).fetchall()
+        attach_single_score(conn2, d, item_id)
     finally:
         conn2.close()
-
-    pr_min, pr_cap = _price_bounds([_price_ratio(r["sp"], r["mp"]) for r in pool])
-    if pr_min is not None:
-        d["price_ratio"] = _price_ratio(d["start_price"], d["market_price"])
-        _score_item(d, pr_min, pr_cap)
 
     return jsonify(d)
 
@@ -482,13 +459,15 @@ def refresh_item(item_id):
         except Exception:
             pass
 
-        # 갱신된 데이터 반환
+        # 갱신된 데이터 반환 — get_item 과 동일하게 AI 점수 부착
         conn.row_factory = sqlite3.Row
         updated = conn.execute(
             "SELECT * FROM BID_ITEMS WHERE cltr_mng_no = ?", (item_id,)
         ).fetchone()
+        d = dict(updated)
+        attach_single_score(conn, d, item_id)
 
-        return jsonify({"item": dict(updated), "refreshed": results})
+        return jsonify({"item": d, "refreshed": results})
     finally:
         conn.close()
 
@@ -642,6 +621,39 @@ def compute_scores(items: list, w_price=0.7, w_location=0.3) -> list:
         _score_item(it, pr_min, pr_cap, w_price, w_location)
 
     return sorted(items, key=lambda x: x["score"], reverse=True)
+
+
+def attach_single_score(conn, d, item_id):
+    """단건 물건 dict d 에 AI 투자 점수(score/score_breakdown)를 채운다.
+
+    시작가(MAX min_bd_prc)·시세가(estimated_market_price_won)를 조회하고
+    active 풀 전체 price_ratio 기준(p95 winsorize)으로 정규화한다.
+    get_item / refresh_item 이 동일한 점수를 반환하도록 공통으로 사용.
+    conn 은 row_factory=sqlite3.Row 여야 한다.
+    """
+    d["start_price"] = conn.execute(
+        "SELECT MAX(min_bd_prc) FROM BID_QUAL WHERE cltr_mng_no = ?", (item_id,)
+    ).fetchone()[0]
+    mp = conn.execute(
+        "SELECT estimated_market_price_won FROM MOLIT_MATCH WHERE cltr_mng_no = ?", (item_id,)
+    ).fetchone()
+    d["market_price"] = mp[0] if mp else None
+
+    pool = conn.execute(
+        """
+        SELECT (SELECT MAX(min_bd_prc) FROM BID_QUAL q WHERE q.cltr_mng_no = b.cltr_mng_no) AS sp,
+               mm.estimated_market_price_won AS mp
+        FROM BID_ITEMS b
+        LEFT JOIN MOLIT_MATCH mm ON mm.cltr_mng_no = b.cltr_mng_no
+        WHERE b.status = 'active'
+        """
+    ).fetchall()
+
+    pr_min, pr_cap = _price_bounds([_price_ratio(r["sp"], r["mp"]) for r in pool])
+    if pr_min is not None:
+        d["price_ratio"] = _price_ratio(d["start_price"], d["market_price"])
+        _score_item(d, pr_min, pr_cap)
+    return d
 
 
 # ─────────────────────────────────────────
