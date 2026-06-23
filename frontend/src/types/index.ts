@@ -43,8 +43,7 @@ export interface BidItem {
   market_match_count?: number | null;
   score?: number;
   score_breakdown?: {
-    ratio: number;
-    fail: number;
+    price: number;
     location: number;
   };
 }

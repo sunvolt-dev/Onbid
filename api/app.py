@@ -210,28 +210,32 @@ def get_item(item_id):
     # AI 투자 점수 계산 (단건)
     conn2 = get_db()
     try:
-        row = conn2.execute(
-            "SELECT MIN(ratio_pct) AS rmin, MAX(ratio_pct) AS rmax FROM BID_ITEMS WHERE status = 'active' AND ratio_pct IS NOT NULL"
+        # 이 물건의 시작가(MAX min_bd_prc) / 시세가(estimated_market_price_won)
+        d["start_price"] = conn2.execute(
+            "SELECT MAX(min_bd_prc) FROM BID_QUAL WHERE cltr_mng_no = ?", (item_id,)
+        ).fetchone()[0]
+        mp = conn2.execute(
+            "SELECT estimated_market_price_won FROM MOLIT_MATCH WHERE cltr_mng_no = ?", (item_id,)
         ).fetchone()
+        d["market_price"] = mp[0] if mp else None
+
+        # active 풀 전체의 price_ratio 정규화 기준 (목록과 동일하게 p95 winsorize)
+        pool = conn2.execute(
+            """
+            SELECT (SELECT MAX(min_bd_prc) FROM BID_QUAL q WHERE q.cltr_mng_no = b.cltr_mng_no) AS sp,
+                   mm.estimated_market_price_won AS mp
+            FROM BID_ITEMS b
+            LEFT JOIN MOLIT_MATCH mm ON mm.cltr_mng_no = b.cltr_mng_no
+            WHERE b.status = 'active'
+            """
+        ).fetchall()
     finally:
         conn2.close()
 
-    if row and row["rmin"] is not None:
-        ratio_min = row["rmin"]
-        ratio_range = row["rmax"] - ratio_min if row["rmax"] != ratio_min else 1
-        r = d.get("ratio_pct")
-        ratio_score = 100 * (1 - (r - ratio_min) / ratio_range) if r is not None else 0
-        fail_score = min((d.get("usbd_nft", 0) or 0) / 5, 1.0) * 100
-        loc_score = get_location_score(d.get("lctn_sd_nm", ""), d.get("lctn_sggn_nm", ""))
-
-        w_ratio, w_fail, w_location = 0.4, 0.3, 0.3
-        total = w_ratio * ratio_score + w_fail * fail_score + w_location * loc_score
-        d["score"] = round(total, 1)
-        d["score_breakdown"] = {
-            "ratio": round(w_ratio * ratio_score, 1),
-            "fail": round(w_fail * fail_score, 1),
-            "location": round(w_location * loc_score, 1),
-        }
+    pr_min, pr_cap = _price_bounds([_price_ratio(r["sp"], r["mp"]) for r in pool])
+    if pr_min is not None:
+        d["price_ratio"] = _price_ratio(d["start_price"], d["market_price"])
+        _score_item(d, pr_min, pr_cap)
 
     return jsonify(d)
 
@@ -565,27 +569,77 @@ def get_location_score(sd_nm: str, sggn_nm: str) -> float:
     return 30
 
 
-def compute_scores(items: list, w_ratio=0.4, w_fail=0.3, w_location=0.3) -> list:
-    ratios = [it["ratio_pct"] for it in items if it["ratio_pct"] is not None]
-    if not ratios:
+# price_ratio 정규화 시 상한 클립(winsorize) 분위.
+# 시세 추정 오류로 가끔 비정상적으로 큰 비율(예: 100배)이 섞이는데,
+# 순수 min-max 로는 이 단일 이상치가 분모를 키워 거의 모든 물건의 가격점수를
+# 만점으로 뭉개버린다. p95 에서 상한을 잘라 가격 차원의 변별력을 보존한다.
+WINSOR_Q = 0.95
+
+
+def _price_ratio(start_price, market_price):
+    """시작가 / 시세가 비율. 한쪽이라도 없으면(0 포함) 1.0(중립)으로 처리.
+
+    시작가 없으면 시세가로, 시세가 없으면 시작가로 대체 → 어느 쪽이든 비율 1.0.
+    """
+    if start_price and market_price:
+        return start_price / market_price
+    return 1.0
+
+
+def _percentile(sorted_vals, q):
+    """오름차순 정렬된 리스트의 q 분위값 (0<=q<=1). 빈 리스트면 None."""
+    if not sorted_vals:
+        return None
+    idx = min(int(len(sorted_vals) * q), len(sorted_vals) - 1)
+    return sorted_vals[idx]
+
+
+def _price_bounds(price_ratios):
+    """price_ratio 리스트에서 정규화 기준 (pr_min, pr_cap) 산출.
+
+    pr_cap 은 p95 winsorize 상한. 비면 (None, None).
+    """
+    if not price_ratios:
+        return None, None
+    prs = sorted(price_ratios)
+    return prs[0], _percentile(prs, WINSOR_Q)
+
+
+def _score_item(it, pr_min, pr_cap, w_price=0.7, w_location=0.3):
+    """단일 물건의 AI 투자 점수를 계산해 it에 score/score_breakdown을 채운다.
+
+    price_ratio(시작가/시세가) 정규화 기준(pr_min, pr_cap=p95 상한)은 호출부에서 결정한다.
+    - 단건 조회: active 물건 전체 풀 기준
+    - 목록: 전달된 items 기준
+    비율이 낮을수록(시세 대비 싸게 시작) 높은 점수. pr_cap 초과분은 상한으로 클립.
+    """
+    pr = it.get("price_ratio")
+    if pr is None:
+        pr = 1.0
+    pr = min(pr, pr_cap)  # winsorize: 이상치 상한 클립
+    pr_range = pr_cap - pr_min if pr_cap != pr_min else 1
+    price_score = 100 * (1 - (pr - pr_min) / pr_range)
+    loc_score = get_location_score(it.get("lctn_sd_nm", ""), it.get("lctn_sggn_nm", ""))
+
+    total = w_price * price_score + w_location * loc_score
+    it["score"] = round(total, 1)
+    it["score_breakdown"] = {
+        "price": round(w_price * price_score, 1),
+        "location": round(w_location * loc_score, 1),
+    }
+    return it
+
+
+def compute_scores(items: list, w_price=0.7, w_location=0.3) -> list:
+    if not items:
         return items
-    ratio_min = min(ratios)
-    ratio_max = max(ratios)
-    ratio_range = ratio_max - ratio_min if ratio_max != ratio_min else 1
+    for it in items:
+        it["price_ratio"] = _price_ratio(it.get("start_price"), it.get("market_price"))
+
+    pr_min, pr_cap = _price_bounds([it["price_ratio"] for it in items])
 
     for it in items:
-        r = it.get("ratio_pct")
-        ratio_score = 100 * (1 - (r - ratio_min) / ratio_range) if r is not None else 0
-        fail_score = min((it.get("usbd_nft", 0) or 0) / 5, 1.0) * 100
-        loc_score = get_location_score(it.get("lctn_sd_nm", ""), it.get("lctn_sggn_nm", ""))
-
-        total = w_ratio * ratio_score + w_fail * fail_score + w_location * loc_score
-        it["score"] = round(total, 1)
-        it["score_breakdown"] = {
-            "ratio": round(w_ratio * ratio_score, 1),
-            "fail": round(w_fail * fail_score, 1),
-            "location": round(w_location * loc_score, 1),
-        }
+        _score_item(it, pr_min, pr_cap, w_price, w_location)
 
     return sorted(items, key=lambda x: x["score"], reverse=True)
 
@@ -631,9 +685,14 @@ def analytics_summary():
         """).fetchall()
 
         top_rows = conn.execute("""
-            SELECT cltr_mng_no, onbid_cltr_nm, ratio_pct, usbd_nft,
-                   lctn_sd_nm, lctn_sggn_nm
-            FROM BID_ITEMS WHERE status = 'active' AND ratio_pct IS NOT NULL
+            SELECT BID_ITEMS.cltr_mng_no AS cltr_mng_no, onbid_cltr_nm, ratio_pct, usbd_nft,
+                   lctn_sd_nm, lctn_sggn_nm,
+                   (SELECT MAX(min_bd_prc) FROM BID_QUAL q
+                     WHERE q.cltr_mng_no = BID_ITEMS.cltr_mng_no) AS start_price,
+                   mm.estimated_market_price_won AS market_price
+            FROM BID_ITEMS
+            LEFT JOIN MOLIT_MATCH mm ON mm.cltr_mng_no = BID_ITEMS.cltr_mng_no
+            WHERE status = 'active'
         """).fetchall()
         top_items = compute_scores([dict(r) for r in top_rows])[:5]
 
@@ -720,29 +779,35 @@ def analytics_trends():
 # ─────────────────────────────────────────
 @app.route("/api/analytics/scores")
 def analytics_scores():
-    w_ratio = float(request.args.get("w_ratio", 0.4))
-    w_fail = float(request.args.get("w_fail", 0.3))
+    w_price = float(request.args.get("w_price", 0.7))
     w_location = float(request.args.get("w_location", 0.3))
     limit = int(request.args.get("limit", 50))
 
     conn = get_db()
     try:
         rows = conn.execute("""
-            SELECT cltr_mng_no, onbid_cltr_nm, lctn_sd_nm, lctn_sggn_nm,
+            SELECT BID_ITEMS.cltr_mng_no AS cltr_mng_no, onbid_cltr_nm,
+                   lctn_sd_nm, lctn_sggn_nm,
                    cltr_usg_mcls_nm, ratio_pct, usbd_nft, lowst_bid_prc,
-                   apsl_evl_amt, cltr_bid_end_dt
+                   apsl_evl_amt, cltr_bid_end_dt,
+                   (SELECT MAX(min_bd_prc) FROM BID_QUAL q
+                     WHERE q.cltr_mng_no = BID_ITEMS.cltr_mng_no) AS start_price,
+                   mm.estimated_market_price_won AS market_price
             FROM BID_ITEMS
-            WHERE status = 'active' AND ratio_pct IS NOT NULL
+            LEFT JOIN MOLIT_MATCH mm ON mm.cltr_mng_no = BID_ITEMS.cltr_mng_no
+            WHERE status = 'active'
         """).fetchall()
 
-        items = compute_scores([dict(r) for r in rows], w_ratio, w_fail, w_location)
+        items = compute_scores([dict(r) for r in rows], w_price, w_location)
 
-        ratios = [it["ratio_pct"] for it in items if it["ratio_pct"] is not None]
+        pr_min, pr_cap = _price_bounds(
+            [it["price_ratio"] for it in items if it.get("price_ratio") is not None]
+        )
         return jsonify({
-            "weights": {"ratio": w_ratio, "fail": w_fail, "location": w_location},
+            "weights": {"price": w_price, "location": w_location},
             "normalization": {
-                "ratio_min": min(ratios) if ratios else None,
-                "ratio_max": max(ratios) if ratios else None,
+                "price_min": pr_min,
+                "price_cap": pr_cap,  # p95 winsorize 상한 (정규화 분모 = cap - min)
             },
             "items": [{
                 "cltr_mng_no": it["cltr_mng_no"],
@@ -753,6 +818,9 @@ def analytics_scores():
                 "fail_count": it.get("usbd_nft", 0),
                 "lowst_bid_prc": it.get("lowst_bid_prc"),
                 "apsl_evl_amt": it.get("apsl_evl_amt"),
+                "start_price": it.get("start_price"),
+                "market_price": it.get("market_price"),
+                "price_ratio": it.get("price_ratio"),
                 "cltr_bid_end_dt": it.get("cltr_bid_end_dt"),
                 "score": it["score"],
                 "score_breakdown": it["score_breakdown"],

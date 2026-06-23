@@ -194,8 +194,7 @@ export default function HeroSection({ item, onBookmark, onRefresh, refreshing }:
                   </p>
                   {item.score_breakdown && (
                     <div className="flex justify-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-primary">비율 {item.score_breakdown.ratio}</span>
-                      <span className="text-[10px] text-primary">유찰 {item.score_breakdown.fail}</span>
+                      <span className="text-[10px] text-primary">가격 {item.score_breakdown.price}</span>
                       <span className="text-[10px] text-primary">입지 {item.score_breakdown.location}</span>
                     </div>
                   )}
